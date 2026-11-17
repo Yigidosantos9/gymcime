@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BodyMap } from '@/components/body-map';
 import { Icon } from '@/components/icon';
 import { useSheet } from '@/components/sheet';
+import { fromHome } from '@/components/tab-back';
 import { Card, EmptyState, IconButton, PressableScale, Ring, SectionHeader, Stat, T, Tile } from '@/components/ui';
 import { Radius, Spacing } from '@/constants/theme';
 import {
@@ -23,7 +24,7 @@ import {
 } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDayLong, formatMinutes, formatVolume } from '@/lib/format';
+import { formatDayLong, formatMinutes } from '@/lib/format';
 import { computeRecovery, restingMuscles } from '@/lib/recovery';
 import { beginWorkout } from '@/lib/start-workout';
 
@@ -78,8 +79,58 @@ export default function Home() {
   const target = profile?.daysPerWeek ?? 3;
   const muscleValues = Object.fromEntries(muscles.map((m) => [m.muscle, Math.min(1, m.sets / 16)]));
   const [prevWeek, thisWeek] = weeks;
-  const delta = prevWeek.volume > 0 && thisWeek.volume > 0 ? Math.round(((thisWeek.volume - prevWeek.volume) / prevWeek.volume) * 100) : null;
+  const delta = prevWeek.sets > 0 && thisWeek.sets > 0 ? Math.round(((thisWeek.sets - prevWeek.sets) / prevWeek.sets) * 100) : null;
   const totalSets = nextDetail?.items.reduce((a, i) => a + i.target_sets, 0) ?? 0;
+
+  /** "+" : rutin listesi + "Boş antrenman" */
+  const pickRoutine = () =>
+    sheet.custom({
+      title: 'Antrenman seç',
+      render: (close) => (
+        <View style={{ gap: Spacing.sm }}>
+          <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: Spacing.sm }}>
+            {routines.length === 0 && (
+              <T secondary style={{ textAlign: 'center', paddingVertical: Spacing.sm }}>
+                Henüz rutin yok. Rutinler sekmesinden oluşturabilirsin.
+              </T>
+            )}
+            {routines.map((r) => (
+              <PressableScale
+                key={r.id}
+                onPress={async () => {
+                  await close();
+                  beginWorkout(db, r.id, sheet);
+                }}
+                style={[styles.pickRow, { backgroundColor: t.surfacePressed }]}>
+                <View style={[styles.routineIcon, { backgroundColor: t.primarySoft, marginBottom: 0 }]}>
+                  <Icon name="barbell" size={16} color={t.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <T variant="heading" numberOfLines={1}>
+                    {r.name}
+                  </T>
+                  <T variant="caption" secondary numberOfLines={1}>
+                    {r.exercise_count} egzersiz · {r.last_done ? formatDayLong(r.last_done) : 'henüz yapılmadı'}
+                  </T>
+                </View>
+                <Icon name="play" size={14} color={t.primary} />
+              </PressableScale>
+            ))}
+          </ScrollView>
+          <PressableScale
+            onPress={async () => {
+              await close();
+              beginWorkout(db, null, sheet);
+            }}
+            style={[styles.pickRow, { backgroundColor: t.primarySoft, justifyContent: 'center' }]}>
+            <Icon name="bolt" size={16} color={t.primary} />
+            <T variant="heading" color={t.primary}>
+              Boş antrenman
+            </T>
+          </PressableScale>
+        </View>
+      ),
+    });
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: t.background }}>
@@ -159,11 +210,12 @@ export default function Home() {
                   Antrenmana başla
                 </T>
               </PressableScale>
-              {next && (
-                <PressableScale onPress={() => beginWorkout(db, null, sheet)} style={[styles.heroBtn, { backgroundColor: 'rgba(255,255,255,0.16)', paddingHorizontal: 18 }]}>
-                  <Icon name="add" size={16} color="#fff" />
-                </PressableScale>
-              )}
+              <PressableScale
+                onPress={() => pickRoutine()}
+                accessibilityLabel="Rutin seç veya boş antrenman"
+                style={[styles.heroBtn, { backgroundColor: 'rgba(255,255,255,0.16)', paddingHorizontal: 18 }]}>
+                <Icon name="add" size={16} color="#fff" />
+              </PressableScale>
             </View>
           </LinearGradient>
         </Animated.View>
@@ -218,7 +270,7 @@ export default function Home() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(180).duration(400)}>
-          <Tile icon="body" label="Son 7 gün · çalışan kaslar" onPress={() => router.push('/progress')} style={{ marginTop: Spacing.md }}>
+          <Tile icon="body" label="Son 7 gün · çalışan kaslar" onPress={() => fromHome('/progress')} style={{ marginTop: Spacing.md }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ flex: 1 }}>
                 <BodyMap values={muscleValues} size={150} labels={false} />
@@ -244,7 +296,7 @@ export default function Home() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(200).duration(400)}>
-          <Tile icon="moon" label={`Kas toparlanması · önerilen ${recoveryDays} gün`} onPress={() => router.push('/progress')} style={{ marginTop: Spacing.md }}>
+          <Tile icon="moon" label={`Kas toparlanması · önerilen ${recoveryDays} gün`} onPress={() => fromHome('/progress')} style={{ marginTop: Spacing.md }}>
             <View style={styles.recGrid}>
               {recovery.map((r) => {
                 const color = r.daysRested == null ? t.textMuted : r.ready ? t.success : t.gold;
@@ -267,19 +319,19 @@ export default function Home() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(220).duration(400)} style={[styles.row, { marginTop: Spacing.md }]}>
-          <Tile icon="chart" label="Haftalık hacim" onPress={() => router.push('/progress')}>
-            <T variant="num">{formatVolume(thisWeek.volume)}</T>
+          <Tile icon="chart" label="Bu hafta" onPress={() => fromHome('/progress')}>
+            <T variant="num">{thisWeek.sets} set</T>
             {delta != null ? (
               <T variant="caption" color={delta >= 0 ? t.success : t.danger}>
                 {delta >= 0 ? '▲' : '▼'} %{Math.abs(delta)} geçen haftaya göre
               </T>
             ) : (
               <T variant="caption" muted>
-                Geçen hafta {formatVolume(prevWeek.volume)}
+                Geçen hafta {prevWeek.sets} set
               </T>
             )}
           </Tile>
-          <Tile icon="layers" label="Toplam" onPress={() => router.push('/history')}>
+          <Tile icon="layers" label="Toplam" onPress={() => fromHome('/history')}>
             <T variant="num">{stats.total}</T>
             <T variant="caption" muted>
               antrenman
@@ -290,7 +342,7 @@ export default function Home() {
         {/* Rutinler */}
         {routines.length > 0 && (
           <Animated.View entering={FadeInDown.delay(260).duration(400)}>
-            <SectionHeader title="Rutinlerin" action="Tümü" onAction={() => router.push('/routines')} />
+            <SectionHeader title="Rutinlerin" action="Tümü" onAction={() => fromHome('/routines')} />
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -318,7 +370,7 @@ export default function Home() {
 
         {/* Son antrenman */}
         <Animated.View entering={FadeInDown.delay(300).duration(400)}>
-          <SectionHeader title="Son antrenman" action={last ? 'Geçmiş' : undefined} onAction={() => router.push('/history')} />
+          <SectionHeader title="Son antrenman" action={last ? 'Geçmiş' : undefined} onAction={() => fromHome('/history')} />
           {last ? (
             <PressableScale onPress={() => router.push(`/session/${last.id}`)} scaleTo={0.98}>
               <Card>
@@ -334,7 +386,7 @@ export default function Home() {
                 <View style={{ flexDirection: 'row', marginTop: Spacing.lg }}>
                   <Stat label="Süre" value={formatMinutes((last.finished_at ?? last.started_at) - last.started_at)} />
                   <Stat label="Set" value={String(last.set_count)} />
-                  <Stat label="Hacim" value={formatVolume(last.volume)} />
+                  <Stat label="Rekor" value={String(last.pr_count)} />
                 </View>
               </Card>
             </PressableScale>
@@ -394,5 +446,6 @@ const styles = StyleSheet.create({
   recChip: { width: '48.5%', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 7, borderRadius: Radius.sm },
   recDot: { width: 8, height: 8, borderRadius: 4 },
   routineCard: { width: 150, padding: Spacing.lg, borderRadius: Radius.lg, borderWidth: StyleSheet.hairlineWidth, gap: 3 },
+  pickRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.md, borderRadius: Radius.md, minHeight: 54 },
   routineIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
 });

@@ -82,10 +82,17 @@ export const SEED_EXERCISES: [string, string, string, Muscle, Equipment][] = [
   ['ab-wheel', 'Ab Wheel Rollout', 'Ab Wheel', 'Karın', 'Diğer'],
   ['russian-twist', 'Russian Twist', 'Russian Twist', 'Karın', 'Vücut'],
   // Kardiyo
-  ['treadmill', 'Treadmill (min)', 'Koşu Bandı (dk)', 'Kardiyo', 'Makine'],
-  ['bike', 'Stationary Bike (min)', 'Bisiklet (dk)', 'Kardiyo', 'Makine'],
-  ['rower', 'Rowing Machine (min)', 'Kürek Makinesi (dk)', 'Kardiyo', 'Makine'],
+  ['treadmill', 'Treadmill', 'Koşu Bandı', 'Kardiyo', 'Makine'],
+  ['bike', 'Stationary Bike', 'Bisiklet', 'Kardiyo', 'Makine'],
+  ['rower', 'Rowing Machine', 'Kürek Makinesi', 'Kardiyo', 'Makine'],
 ];
+
+/** Seed egzersizinin türü: kardiyo makineleri = cardio, plank = timed, "Vücut" ekipmanı = bodyweight, kalanı strength. */
+export function seedKind(slug: string, equipment: string): 'strength' | 'bodyweight' | 'cardio' | 'timed' {
+  if (['treadmill', 'bike', 'rower'].includes(slug)) return 'cardio';
+  if (slug === 'plank') return 'timed';
+  return equipment === 'Vücut' ? 'bodyweight' : 'strength';
+}
 
 type Template = { name: string; items: [slug: string, sets: number, repMin: number, repMax: number][] };
 

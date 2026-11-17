@@ -76,6 +76,14 @@ const pr = (raw: DatabaseSync, id: number) => (raw.prepare('SELECT is_pr FROM se
     const s = (await q.getWorkoutSummary(db, w.workoutId))!;
     assert(s.setCount === 2 && s.volume === 1200, `özet ısınmayı saymıyor (set ${s.setCount}, hacim ${s.volume})`);
     assert(s.muscles[0].sets === 2, 'kas dağılımıyla tutarlı');
+    // haftalık çalışma seti (ana sayfa/ilerleme) ısınmayı saymaz; geçmiş listesi de aynı
+    const rec = addWorkout(raw, bench, Date.now() - 3_600_000, [[40, 15, 'warmup'], [60, 10], [60, 8]]);
+    const wk = await q.weeklyVolume(db, 2);
+    assert(wk[1].sets === 2 && wk[1].workouts === 1, `haftalık çalışma seti ısınmasız (${wk[1].sets})`);
+    const eh = await q.exerciseHistory(db, bench);
+    assert(eh[eh.length - 1].max_reps === 10 && eh.every((h) => h.max_reps <= 10), 'en çok tekrar ısınmayı saymıyor');
+    const li = (await q.listWorkouts(db)).find((x) => x.id === rec.workoutId)!;
+    assert(li.set_count === 2, `geçmiş set sayısı ısınmasız (${li.set_count})`);
   }
 
   // ───── 5. deleteAllData ─────

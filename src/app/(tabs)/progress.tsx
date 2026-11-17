@@ -6,16 +6,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BodyMap, HeatLegend, MuscleIcon } from '@/components/body-map';
 import { BarChart, LineChart } from '@/components/charts';
+import { HomeBack } from '@/components/tab-back';
 import { Icon } from '@/components/icon';
 import { Badge, Card, Chip, EmptyState, IconButton, PressableScale, ScreenHeader, SectionHeader, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
-import { addBodyWeight, getProfile, listBodyWeights, muscleLastTrained, muscleSets, restStats, topExercises, weeklyVolume } from '@/db/queries';
+import { addBodyWeight, weeklyCardio, getProfile, listBodyWeights, muscleLastTrained, muscleSets, restStats, topExercises, weeklyVolume } from '@/db/queries';
 import { MUSCLES } from '@/db/seed';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDate, formatDuration, formatVolume, formatWeight, parseNumber } from '@/lib/format';
+import { formatDate, formatDuration, formatWeight, parseNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { computeRecovery, fatigueValues, restLabel } from '@/lib/recovery';
+import { formatMin } from '@/lib/cardio';
 import { formatRest } from '@/lib/rest';
 
 type Range = 7 | 28;
@@ -26,7 +28,7 @@ export default function Progress() {
   const [range, setRange] = useState<Range>(7);
   const { data, db, reload } = useDbQuery(
     async (db) => {
-      const [weeks, muscles, top, bodies, rests, lastTrained, profile] = await Promise.all([
+      const [weeks, muscles, top, bodies, rests, lastTrained, profile, cardioWeeks] = await Promise.all([
         weeklyVolume(db, 8),
         muscleSets(db, range),
         topExercises(db, 8),
@@ -34,18 +36,19 @@ export default function Progress() {
         restStats(db, 28),
         muscleLastTrained(db),
         getProfile(db),
+        weeklyCardio(db, 8),
       ]);
       const recoveryDays = profile?.recoveryDays ?? 2;
-      return { weeks, muscles, top, bodies, rests, recovery: computeRecovery(lastTrained, recoveryDays), recoveryDays };
+      return { cardioWeeks, weeks, muscles, top, bodies, rests, recovery: computeRecovery(lastTrained, recoveryDays), recoveryDays };
     },
     [range],
   );
 
   if (!data) return <View style={{ flex: 1, backgroundColor: t.background }} />;
-  const { weeks, muscles, top, bodies, rests, recovery, recoveryDays } = data;
+  const { cardioWeeks, weeks, muscles, top, bodies, rests, recovery, recoveryDays } = data;
   const thisWeek = weeks[weeks.length - 1];
   const lastWeek = weeks[weeks.length - 2];
-  const delta = lastWeek?.volume && thisWeek.volume > 0 ? Math.round(((thisWeek.volume - lastWeek.volume) / lastWeek.volume) * 100) : null;
+  const delta = lastWeek?.sets && thisWeek.sets > 0 ? Math.round(((thisWeek.sets - lastWeek.sets) / lastWeek.sets) * 100) : null;
   // haftalık ortalamaya çevir (28 gün → /4)
   const perWeek = (sets: number) => (range === 28 ? sets / 4 : sets);
   const muscleMap = new Map(muscles.map((m) => [m.muscle, perWeek(m.sets)]));
@@ -63,22 +66,23 @@ export default function Progress() {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: t.background }}>
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 120 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <HomeBack />
         <ScreenHeader title="İlerleme" right={<IconButton icon="settings" onPress={() => router.push('/settings')} color={t.textSecondary} />} />
 
-        {/* Haftalık hacim */}
+        {/* Haftalık çalışma seti */}
         <Animated.View entering={FadeInDown.duration(350)}>
           <Card>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <View style={{ gap: 2 }}>
                 <T variant="overline" secondary>
-                  Bu haftaki hacim
+                  Bu hafta çalışma seti
                 </T>
                 <T variant="numLarge" style={{ fontSize: 36, lineHeight: 42 }}>
-                  {formatVolume(thisWeek.volume)}
+                  {thisWeek.sets}
                 </T>
-                {thisWeek.volume === 0 && lastWeek?.volume ? (
+                {thisWeek.sets === 0 && lastWeek?.sets ? (
                   <T variant="caption" muted>
-                    Geçen hafta {formatVolume(lastWeek.volume)} — hadi geçelim 🌊
+                    Geçen hafta {lastWeek.sets} set — hadi geçelim 🌊
                   </T>
                 ) : null}
               </View>
@@ -92,10 +96,42 @@ export default function Progress() {
               )}
             </View>
             <View style={{ marginTop: Spacing.lg }}>
-              <BarChart values={weeks.map((w) => w.volume)} labels={weeks.map((w) => formatDate(w.week))} />
+              <BarChart values={weeks.map((w) => w.sets)} labels={weeks.map((w) => formatDate(w.week))} />
             </View>
           </Card>
         </Animated.View>
+
+        {/* Kardiyo */}
+        {cardioWeeks.some((w) => w.minutes > 0) && (
+          <Animated.View entering={FadeInDown.delay(40).duration(350)}>
+            <SectionHeader title="Kardiyo" />
+            <Card>
+              <View style={{ flexDirection: 'row', gap: Spacing.xl }}>
+                <View>
+                  <T variant="overline" secondary>
+                    Bu hafta
+                  </T>
+                  <T variant="numLarge" style={{ fontSize: 30, lineHeight: 36 }}>
+                    {formatMin(cardioWeeks[cardioWeeks.length - 1].minutes)}
+                  </T>
+                </View>
+                {cardioWeeks[cardioWeeks.length - 1].km > 0 && (
+                  <View>
+                    <T variant="overline" secondary>
+                      Mesafe
+                    </T>
+                    <T variant="numLarge" style={{ fontSize: 30, lineHeight: 36 }}>
+                      {String(Math.round(cardioWeeks[cardioWeeks.length - 1].km * 10) / 10).replace('.', ',')} km
+                    </T>
+                  </View>
+                )}
+              </View>
+              <View style={{ marginTop: Spacing.lg }}>
+                <BarChart values={cardioWeeks.map((w) => w.minutes)} labels={cardioWeeks.map((w) => formatDate(w.week))} />
+              </View>
+            </Card>
+          </Animated.View>
+        )}
 
         {/* Kas haritası */}
         <Animated.View entering={FadeInDown.delay(70).duration(350)}>

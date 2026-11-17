@@ -72,7 +72,7 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-/** "Nasıl yapılır": görseller + (varsa) İngilizce talimatlar + AI Türkçe rehberi. */
+/** "Nasıl yapılır": görseller + (varsa) Türkçe talimatlar + AI Türkçe rehberi. */
 export function ExerciseGuideCard({ exercise }: { exercise: Exercise }) {
   const t = useTheme();
   const media = getExerciseMedia(exercise.slug);
@@ -94,7 +94,7 @@ export function ExerciseGuideCard({ exercise }: { exercise: Exercise }) {
             {media.instructions.length > 0 && (
               <>
                 <Divider />
-                <Block title="Adımlar (İngilizce)">
+                <Block title="Adımlar">
                   <Bullets items={media.instructions} numbered />
                 </Block>
               </>

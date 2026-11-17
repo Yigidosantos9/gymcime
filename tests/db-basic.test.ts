@@ -63,6 +63,10 @@ const assert = (c: any, m: string) => { if (!c) throw new Error('FAIL: ' + m); c
   assert(stats.total === 2 && stats.weekCount === 2 && stats.weekStreak === 1, `ana sayfa istatistik ${JSON.stringify({ ...stats, daysDone: [...stats.daysDone] })}`);
   const wv = await q.weeklyVolume(db, 8);
   assert(wv.length === 8 && wv[7].volume === 2400 + 650 + 250, `haftalık hacim ${wv[7].volume}`);
+  // arayüzde hacim yok: haftalık çalışma seti (ısınma hariç), en çok tekrar ve liste set sayısı
+  assert(wv[7].sets === 6 && wv[7].workouts === 2 && wv[6].sets === 0, `haftalık çalışma seti ${wv[7].sets}`);
+  assert(hist[0].max_reps === 10 && hist[1].max_reps === 10, `egzersiz geçmişi en çok tekrar ${hist[1].max_reps}`);
+  assert(list[0].set_count === 2 && list[1].set_count === 4, `liste set sayısı ${list[0].set_count}/${list[1].set_count}`);
   assert((await q.muscleSets(db, 7))[0].muscle === 'Göğüs', 'kas setleri');
   assert((await q.topExercises(db)).length === 1, 'top egzersizler');
 

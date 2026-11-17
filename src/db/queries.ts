@@ -11,6 +11,19 @@ import {
   type SetStyle,
   type Suggestion,
 } from '@/lib/progression';
+import {
+  cardioPrTexts,
+  EMPTY_BESTS,
+  isCardioPr,
+  isTimeBased,
+  normalizeKind,
+  suggestCardio,
+  updateBests,
+  type CardioBests,
+  type CardioSession,
+  type CardioSuggestion,
+  type ExerciseKind,
+} from '@/lib/cardio';
 import { baseRest, restAfter, type SetType } from '@/lib/rest';
 import { startOfWeek } from '@/lib/format';
 
@@ -28,6 +41,12 @@ export function e1rmSql(w: string, r: string) {
 /** Tamamlanmış gerçek set: boş (tekrarsız) tamamlanmış setler istatistiklere girmez. `s` = sets takma adı. */
 export const REAL_DONE_SQL = 's.done = 1 AND s.reps > 0';
 
+/** Kas/set/toparlanma/öneri hesaplarına yalnızca ağırlık ve vücut ağırlığı hareketleri girer (kardiyo ve süreli hariç). `e` = exercises takma adı. */
+export const STRENGTH_KIND_SQL = "e.kind IN ('strength','bodyweight')";
+
+/** Tamamlanmış süre tabanlı (kardiyo/süreli) set. `s` = sets takma adı. */
+export const TIME_DONE_SQL = 's.done = 1 AND s.duration_sec > 0';
+
 // ───────────────────────── Tipler ─────────────────────────
 
 export type Exercise = {
@@ -39,6 +58,8 @@ export type Exercise = {
   is_custom: number;
   rest_seconds: number | null;
   alias: string | null;
+  /** strength | bodyweight | cardio | timed */
+  kind: ExerciseKind;
 };
 
 export type RoutineSummary = {
@@ -61,6 +82,8 @@ export type RoutineItem = {
   /** rutine özel dinlenme (null → egzersiz varsayılanı) */
   rest_seconds: number | null;
   default_rest?: number | null;
+  /** egzersiz türü (cardio/timed → tekrar aralığı yok) */
+  kind?: ExerciseKind;
 };
 
 export type SetRow = {
@@ -78,6 +101,11 @@ export type SetRow = {
   rir: number | null;
   /** kısa set notu (isteğe bağlı) */
   note: string | null;
+  /** kardiyo/süreli: süre (sn), mesafe (m), eğim/seviye, kalori */
+  duration_sec: number | null;
+  distance_m: number | null;
+  level: number | null;
+  kcal: number | null;
 };
 
 export type WorkoutExerciseFull = {
@@ -86,12 +114,16 @@ export type WorkoutExerciseFull = {
   name: string;
   muscle: string;
   equipment: string;
+  kind: ExerciseKind;
   position: number;
   rep_min: number;
   rep_max: number;
   rest_seconds: number | null;
   exercise_rest: number | null;
   sets: SetRow[];
+  /** kardiyo/süreli: geçmiş seanslar ve basit öneri (ağırlık önerisi yerine) */
+  previousCardio: CardioSession[];
+  cardioSuggestion: CardioSuggestion | null;
   previous: DoneSet[];
   suggestion: Suggestion;
   /** set düzeni: artan (piramit) ya da sabit */
@@ -114,6 +146,8 @@ export type WorkoutListItem = Workout & {
   volume: number;
   exercise_names: string | null;
   pr_count: number;
+  /** kardiyo süresi (sn); set/hacim sayılarına karışmaz */
+  cardio_sec: number;
 };
 
 export type Profile = {
@@ -190,12 +224,13 @@ export async function getExercise(db: SQLiteDatabase, id: number) {
   return db.getFirstAsync<Exercise>('SELECT * FROM exercises WHERE id = ?', id);
 }
 
-export async function createExercise(db: SQLiteDatabase, name: string, muscle: string, equipment: string) {
+export async function createExercise(db: SQLiteDatabase, name: string, muscle: string, equipment: string, kind: ExerciseKind = 'strength') {
   const res = await db.runAsync(
-    'INSERT INTO exercises (name, muscle, equipment, is_custom) VALUES (?, ?, ?, 1)',
+    'INSERT INTO exercises (name, muscle, equipment, is_custom, kind) VALUES (?, ?, ?, 1, ?)',
     name.trim(),
     muscle,
     equipment,
+    normalizeKind(kind),
   );
   return res.lastInsertRowId;
 }
@@ -218,7 +253,7 @@ export async function getRoutine(db: SQLiteDatabase, id: number) {
   if (!routine) return null;
   const items = await db.getAllAsync<RoutineItem>(
     `SELECT re.id, re.exercise_id, e.name, e.muscle, e.equipment, re.target_sets, re.rep_min, re.rep_max,
-       re.rest_seconds, e.rest_seconds AS default_rest
+       re.rest_seconds, e.rest_seconds AS default_rest, e.kind
      FROM routine_exercises re JOIN exercises e ON e.id = re.exercise_id
      WHERE re.routine_id = ? ORDER BY re.position`,
     id,
@@ -377,13 +412,42 @@ export async function recentSessions(db: SQLiteDatabase, exerciseId: number, exc
   return (await recentSessionsBatch(db, [exerciseId], excludeWorkoutId, limit)).get(exerciseId) ?? [];
 }
 
+/** Kardiyo/süreli egzersizlerin son N bitmiş seansı (en yeni başta), bu antrenman hariç. */
+export async function recentCardioBatch(db: SQLiteDatabase, exerciseIds: number[], excludeWorkoutId: number, limit = 4) {
+  const out = new Map<number, CardioSession[]>();
+  const uniq = [...new Set(exerciseIds)];
+  for (const id of uniq) out.set(id, []);
+  if (uniq.length === 0) return out;
+  const rows = await db.getAllAsync<{ exercise_id: number; workout_id: number; started_at: number; duration_sec: number | null; distance_m: number | null }>(
+    `SELECT we.exercise_id, w.id AS workout_id, w.started_at, s.duration_sec, s.distance_m
+     FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN workouts w ON w.id = we.workout_id
+     WHERE ${TIME_DONE_SQL} AND w.finished_at IS NOT NULL AND w.id != ? AND we.exercise_id IN (${uniq.map(() => '?').join(',')})
+     ORDER BY w.started_at DESC, w.id DESC, we.position, s.position`,
+    excludeWorkoutId,
+    ...uniq,
+  );
+  const byKey = new Map<string, CardioSession>();
+  for (const r of rows) {
+    const key = `${r.exercise_id}:${r.workout_id}`;
+    let sess = byKey.get(key);
+    if (!sess) {
+      sess = { started_at: r.started_at, sets: [] };
+      byKey.set(key, sess);
+      const list = out.get(r.exercise_id)!;
+      if (list.length < limit) list.push(sess);
+    }
+    sess.sets.push({ duration_sec: r.duration_sec, distance_m: r.distance_m });
+  }
+  return out;
+}
+
 export type SuggestOptions = { goal?: string; increments?: Increments; setStyle?: SetStyle };
 
 export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: number, opts: SuggestOptions = {}) {
   const workout = await db.getFirstAsync<Workout>('SELECT * FROM workouts WHERE id = ?', workoutId);
   if (!workout) return null;
-  const exercises = await db.getAllAsync<Omit<WorkoutExerciseFull, 'sets' | 'previous' | 'suggestion'>>(
-    `SELECT we.id, we.exercise_id, e.name, e.muscle, e.equipment, we.position, we.rep_min, we.rep_max,
+  const exercises = await db.getAllAsync<Omit<WorkoutExerciseFull, 'sets' | 'previous' | 'suggestion' | 'previousCardio' | 'cardioSuggestion'>>(
+    `SELECT we.id, we.exercise_id, e.name, e.muscle, e.equipment, e.kind, we.position, we.rep_min, we.rep_max,
        we.rest_seconds, e.rest_seconds AS exercise_rest
      FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id
      WHERE we.workout_id = ? ORDER BY we.position`,
@@ -397,11 +461,32 @@ export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: number, op
   const full: WorkoutExerciseFull[] = [];
   const histories = await recentSessionsBatch(
     db,
-    exercises.map((e) => e.exercise_id),
+    exercises.filter((e) => !isTimeBased(e.kind)).map((e) => e.exercise_id),
+    workoutId,
+    4,
+  );
+  const cardioHistories = await recentCardioBatch(
+    db,
+    exercises.filter((e) => isTimeBased(e.kind)).map((e) => e.exercise_id),
     workoutId,
     4,
   );
   for (const ex of exercises) {
+    if (isTimeBased(ex.kind)) {
+      const ch = cardioHistories.get(ex.exercise_id) ?? [];
+      full.push({
+        ...ex,
+        sets: allSets.filter((s) => s.workout_exercise_id === ex.id),
+        previous: [],
+        previousCardio: ch,
+        cardioSuggestion: suggestCardio(ch, ex.kind as 'cardio' | 'timed'),
+        // ağırlık önerisi kardiyoda kullanılmaz; tip gereği boş bir öneri
+        suggestion: { weight: null, reps: 0, reason: '', kind: 'start', confidence: 'low', e1rm: null, targetRir: 0, plateau: false, warmups: [] },
+        style: 'straight',
+        learnedReps: [],
+      });
+      continue;
+    }
     const history = histories.get(ex.exercise_id) ?? [];
     // "Önceki" sütunu: son seansın çalışma setleri (ısınma hariç)
     const previous = (history[0]?.sets ?? []).filter((p) => p.set_type !== 'warmup' && p.reps);
@@ -409,6 +494,8 @@ export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: number, op
       ...ex,
       sets: allSets.filter((s) => s.workout_exercise_id === ex.id),
       previous,
+      previousCardio: [],
+      cardioSuggestion: null,
       suggestion: suggestNext(history, ex.rep_min, ex.rep_max, ex.equipment, {
         goal: opts.goal,
         increments: opts.increments,
@@ -429,13 +516,15 @@ export async function addExercisesToWorkout(db: SQLiteDatabase, workoutId: numbe
   let pos = (row?.maxPos ?? -1) + 1;
   await db.withTransactionAsync(async () => {
     for (const exId of exerciseIds) {
+      const kindRow = await db.getFirstAsync<{ kind: string }>('SELECT kind FROM exercises WHERE id = ?', exId);
       const we = await db.runAsync(
         'INSERT INTO workout_exercises (workout_id, exercise_id, position) VALUES (?, ?, ?)',
         workoutId,
         exId,
         pos++,
       );
-      for (let s = 0; s < 3; s++) {
+      const setCount = kindRow?.kind === 'cardio' ? 1 : 3;
+      for (let s = 0; s < setCount; s++) {
         await db.runAsync('INSERT INTO sets (workout_exercise_id, position) VALUES (?, ?)', we.lastInsertRowId, s);
       }
     }
@@ -526,6 +615,22 @@ export async function updateSetValues(
   );
 }
 
+/** Kardiyo/süreli set değerleri (süre sn, mesafe m, eğim/seviye, kalori). */
+export async function updateCardioValues(
+  db: SQLiteDatabase,
+  setId: number,
+  values: { duration_sec: number | null; distance_m?: number | null; level?: number | null; kcal?: number | null },
+) {
+  await db.runAsync(
+    'UPDATE sets SET duration_sec = ?, distance_m = ?, level = ?, kcal = ? WHERE id = ?',
+    values.duration_sec,
+    values.distance_m ?? null,
+    values.level ?? null,
+    values.kcal ?? null,
+    setId,
+  );
+}
+
 /** Gerçek dinlenmeyi kaydetmek için üst sınır: bundan uzun boşluklar "mola" sayılmaz. */
 const MAX_TRACKED_REST = 15 * 60;
 
@@ -542,12 +647,35 @@ export async function toggleSetDone(db: SQLiteDatabase, setId: number, done: boo
     );
     return false;
   }
-  const set = await db.getFirstAsync<{ weight: number | null; reps: number | null; exercise_id: number; workout_id: number; set_type: string }>(
-    `SELECT s.weight, s.reps, s.set_type, we.exercise_id, we.workout_id
-     FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id WHERE s.id = ?`,
+  const set = await db.getFirstAsync<{
+    weight: number | null;
+    reps: number | null;
+    exercise_id: number;
+    workout_id: number;
+    set_type: string;
+    kind: string;
+    duration_sec: number | null;
+    distance_m: number | null;
+  }>(
+    `SELECT s.weight, s.reps, s.set_type, s.duration_sec, s.distance_m, we.exercise_id, we.workout_id, e.kind
+     FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN exercises e ON e.id = we.exercise_id WHERE s.id = ?`,
     setId,
   );
   if (!set) return false;
+
+  if (isTimeBased(set.kind)) {
+    // Kardiyo/süreli: rekor = en uzun süre / en uzun mesafe / en hızlı tempo; mola takibi yok
+    const prevRows = await db.getAllAsync<{ duration_sec: number | null; distance_m: number | null }>(
+      `SELECT s.duration_sec, s.distance_m FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id
+       WHERE we.exercise_id = ? AND ${TIME_DONE_SQL} AND s.id != ?`,
+      set.exercise_id,
+      setId,
+    );
+    const bests = prevRows.reduce<CardioBests>((b, r) => updateBests(b, r), EMPTY_BESTS);
+    const pr = set.set_type !== 'warmup' && isCardioPr(bests, set, set.kind as 'cardio' | 'timed');
+    await db.runAsync('UPDATE sets SET done = 1, is_pr = ?, completed_at = ?, rest_taken = NULL, rest_target = NULL WHERE id = ?', pr ? 1 : 0, now, setId);
+    return pr;
+  }
 
   let isPr = false;
   if (set.weight && set.reps && set.set_type !== 'warmup') {
@@ -566,7 +694,7 @@ export async function toggleSetDone(db: SQLiteDatabase, setId: number, done: boo
   const prevSet = await db.getFirstAsync<{ completed_at: number; set_type: string; we_rest: number | null; ex_rest: number | null }>(
     `SELECT s.completed_at, s.set_type, we.rest_seconds AS we_rest, e.rest_seconds AS ex_rest
      FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN exercises e ON e.id = we.exercise_id
-     WHERE we.workout_id = ? AND s.done = 1 AND s.id != ? AND s.completed_at IS NOT NULL
+     WHERE we.workout_id = ? AND s.done = 1 AND s.id != ? AND s.completed_at IS NOT NULL AND e.kind IN ('strength','bodyweight')
      ORDER BY s.completed_at DESC LIMIT 1`,
     set.workout_id,
     setId,
@@ -602,8 +730,10 @@ export type FinishSummary = {
   restAvgTaken: number | null;
   restAvgTarget: number | null;
   muscles: { muscle: string; sets: number }[];
-  prs: { name: string; weight: number; reps: number }[];
+  prs: { name: string; weight: number; reps: number; kind?: ExerciseKind; duration_sec?: number | null; distance_m?: number | null }[];
   workoutNumber: number;
+  /** bu antrenmandaki kardiyo/süreli setler (set sayısına/kas dağılımına girmez) */
+  cardio: { sets: number; minutes: number; km: number };
 };
 
 /** Antrenmanı bitirir. Hiç tamamlanmış set yoksa antrenmanı siler ve `false` döner. */
@@ -639,11 +769,19 @@ export async function getWorkoutSummary(db: SQLiteDatabase, workoutId: number): 
   if (!workout) return null;
   const stats = await db.getFirstAsync<{ c: number; v: number }>(
     `SELECT COUNT(*) AS c, COALESCE(SUM(COALESCE(s.weight,0) * COALESCE(s.reps,0)), 0) AS v
-     FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id WHERE we.workout_id = ? AND s.set_type != 'warmup'`,
+     FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN exercises e ON e.id = we.exercise_id
+     WHERE we.workout_id = ? AND s.set_type != 'warmup' AND ${STRENGTH_KIND_SQL}`,
     workoutId,
   );
-  const prs = await db.getAllAsync<{ name: string; weight: number; reps: number }>(
-    `SELECT e.name, s.weight, s.reps FROM sets s
+  const cardio = await db.getFirstAsync<{ c: number; sec: number | null; m: number | null }>(
+    `SELECT COUNT(*) AS c, SUM(s.duration_sec) AS sec, SUM(s.distance_m) AS m
+     FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id
+     JOIN exercises e ON e.id = we.exercise_id
+     WHERE we.workout_id = ? AND e.kind = 'cardio' AND ${TIME_DONE_SQL}`,
+    workoutId,
+  );
+  const prs = await db.getAllAsync<{ name: string; weight: number; reps: number; kind: ExerciseKind; duration_sec: number | null; distance_m: number | null }>(
+    `SELECT e.name, COALESCE(s.weight, 0) AS weight, COALESCE(s.reps, 0) AS reps, e.kind, s.duration_sec, s.distance_m FROM sets s
      JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN exercises e ON e.id = we.exercise_id
      WHERE we.workout_id = ? AND s.is_pr = 1 ORDER BY we.position, s.position`,
     workoutId,
@@ -661,7 +799,7 @@ export async function getWorkoutSummary(db: SQLiteDatabase, workoutId: number): 
   const muscles = await db.getAllAsync<{ muscle: string; sets: number }>(
     `SELECT e.muscle, COUNT(s.id) AS sets FROM sets s
      JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN exercises e ON e.id = we.exercise_id
-     WHERE we.workout_id = ? AND s.set_type != 'warmup' GROUP BY e.muscle ORDER BY sets DESC`,
+     WHERE we.workout_id = ? AND s.set_type != 'warmup' AND ${STRENGTH_KIND_SQL} GROUP BY e.muscle ORDER BY sets DESC`,
     workoutId,
   );
   return {
@@ -675,6 +813,7 @@ export async function getWorkoutSummary(db: SQLiteDatabase, workoutId: number): 
     restAvgTaken: rest?.taken != null ? Math.round(rest.taken) : null,
     restAvgTarget: rest?.target != null ? Math.round(rest.target) : null,
     muscles,
+    cardio: { sets: cardio?.c ?? 0, minutes: Math.round((cardio?.sec ?? 0) / 60), km: Math.round((cardio?.m ?? 0) / 100) / 10 },
   };
 }
 
@@ -697,6 +836,23 @@ export async function renameWorkout(db: SQLiteDatabase, workoutId: number, name:
  * bir set, kendinden ÖNCEKİ en iyi tahmini 1RM'i (>0) aşıyorsa rekordur. Transaction açmaz (çağıran açar).
  */
 export async function recomputePrFlags(db: SQLiteDatabase, exerciseId: number) {
+  const ex = await db.getFirstAsync<{ kind: string }>('SELECT kind FROM exercises WHERE id = ?', exerciseId);
+  if (ex && isTimeBased(ex.kind)) {
+    const trows = await db.getAllAsync<{ id: number; duration_sec: number | null; distance_m: number | null; is_pr: number }>(
+      `SELECT s.id, s.duration_sec, s.distance_m, s.is_pr
+       FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN workouts w ON w.id = we.workout_id
+       WHERE we.exercise_id = ? AND ${TIME_DONE_SQL}
+       ORDER BY w.started_at, COALESCE(s.completed_at, w.started_at), we.position, s.position, s.id`,
+      exerciseId,
+    );
+    let bests = EMPTY_BESTS;
+    for (const r of trows) {
+      const pr = isCardioPr(bests, r, ex.kind as 'cardio' | 'timed') ? 1 : 0;
+      if (pr !== r.is_pr) await db.runAsync('UPDATE sets SET is_pr = ? WHERE id = ?', pr, r.id);
+      bests = updateBests(bests, r);
+    }
+    return;
+  }
   const rows = await db.getAllAsync<{ id: number; weight: number | null; reps: number | null; is_pr: number }>(
     `SELECT s.id, s.weight, s.reps, s.is_pr
      FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN workouts w ON w.id = we.workout_id
@@ -726,11 +882,12 @@ export async function finalizeHistoryEdit(db: SQLiteDatabase, workoutId: number,
   await db.withTransactionAsync(async () => {
     const affected = await db.getAllAsync<{ exercise_id: number }>(
       `SELECT DISTINCT we.exercise_id FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id
-       WHERE we.workout_id = ? AND s.done = 1 AND COALESCE(s.weight, 0) = 0 AND COALESCE(s.reps, 0) = 0`,
+       WHERE we.workout_id = ? AND s.done = 1 AND COALESCE(s.weight, 0) = 0 AND COALESCE(s.reps, 0) = 0 AND COALESCE(s.duration_sec, 0) = 0 AND COALESCE(s.distance_m, 0) = 0`,
       workoutId,
     );
     await db.runAsync(
       `DELETE FROM sets WHERE done = 1 AND COALESCE(weight, 0) = 0 AND COALESCE(reps, 0) = 0
+         AND COALESCE(duration_sec, 0) = 0 AND COALESCE(distance_m, 0) = 0
          AND workout_exercise_id IN (SELECT id FROM workout_exercises WHERE workout_id = ?)`,
       workoutId,
     );
@@ -757,6 +914,10 @@ export type SetPatch = {
   set_type?: SetType;
   rir?: number | null;
   note?: string | null;
+  duration_sec?: number | null;
+  distance_m?: number | null;
+  level?: number | null;
+  kcal?: number | null;
 };
 
 /** Bitmiş antrenmandaki bir seti düzenler; o egzersizin PR bayrakları yeniden hesaplanır. */
@@ -776,6 +937,12 @@ export async function editHistorySet(db: SQLiteDatabase, setId: number, patch: S
   if ('set_type' in patch) {
     sets.push('set_type = ?');
     vals.push(patch.set_type ?? 'normal');
+  }
+  for (const k of ['duration_sec', 'distance_m', 'level', 'kcal'] as const) {
+    if (k in patch) {
+      sets.push(`${k} = ?`);
+      vals.push(patch[k] ?? null);
+    }
   }
   if ('rir' in patch) {
     sets.push('rir = ?');
@@ -800,17 +967,29 @@ export async function addHistorySet(db: SQLiteDatabase, workoutExerciseId: numbe
   if (!we) return null;
   let id = 0;
   await db.withTransactionAsync(async () => {
-    const last = await db.getFirstAsync<{ position: number; weight: number | null; reps: number | null }>(
-      "SELECT position, weight, reps FROM sets WHERE workout_exercise_id = ? AND set_type != 'warmup' ORDER BY position DESC LIMIT 1",
+    const last = await db.getFirstAsync<{
+      position: number;
+      weight: number | null;
+      reps: number | null;
+      duration_sec: number | null;
+      distance_m: number | null;
+      level: number | null;
+      kcal: number | null;
+    }>(
+      "SELECT position, weight, reps, duration_sec, distance_m, level, kcal FROM sets WHERE workout_exercise_id = ? AND set_type != 'warmup' ORDER BY position DESC LIMIT 1",
       workoutExerciseId,
     );
     const max = await db.getFirstAsync<{ m: number | null }>('SELECT MAX(position) AS m FROM sets WHERE workout_exercise_id = ?', workoutExerciseId);
     const res = await db.runAsync(
-      "INSERT INTO sets (workout_exercise_id, position, set_type, weight, reps, done, completed_at) VALUES (?, ?, 'normal', ?, ?, 1, ?)",
+      "INSERT INTO sets (workout_exercise_id, position, set_type, weight, reps, duration_sec, distance_m, level, kcal, done, completed_at) VALUES (?, ?, 'normal', ?, ?, ?, ?, ?, ?, 1, ?)",
       workoutExerciseId,
       (max?.m ?? -1) + 1,
       last?.weight ?? null,
       last?.reps ?? null,
+      last?.duration_sec ?? null,
+      last?.distance_m ?? null,
+      last?.level ?? null,
+      last?.kcal ?? null,
       we.finished_at ?? we.started_at,
     );
     id = res.lastInsertRowId;
@@ -873,8 +1052,9 @@ export async function updateWorkoutMeta(db: SQLiteDatabase, workoutId: number, m
 export async function listWorkouts(db: SQLiteDatabase, limit = 100) {
   return db.getAllAsync<WorkoutListItem>(
     `SELECT w.*,
-      (SELECT COUNT(*) FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id WHERE we.workout_id = w.id AND s.reps > 0) AS set_count,
+      (SELECT COUNT(*) FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id WHERE we.workout_id = w.id AND s.done = 1 AND s.reps > 0 AND s.set_type != 'warmup') AS set_count,
       (SELECT COALESCE(SUM(COALESCE(s.weight,0) * COALESCE(s.reps,0)),0) FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id WHERE we.workout_id = w.id AND s.reps > 0) AS volume,
+      (SELECT COALESCE(SUM(s.duration_sec),0) FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN exercises e ON e.id = we.exercise_id WHERE we.workout_id = w.id AND e.kind = 'cardio' AND s.done = 1) AS cardio_sec,
       (SELECT COUNT(*) FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id WHERE we.workout_id = w.id AND s.is_pr = 1) AS pr_count,
       (SELECT GROUP_CONCAT(name, ' · ') FROM (SELECT e.name FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id WHERE we.workout_id = w.id ORDER BY we.position)) AS exercise_names
      FROM workouts w WHERE w.finished_at IS NOT NULL
@@ -911,9 +1091,9 @@ export async function weeklyVolume(db: SQLiteDatabase, weeks = 8) {
   const rows = await db.getAllAsync<{ started_at: number; v: number; c: number }>(
     `SELECT w.started_at,
       COALESCE(SUM(COALESCE(s.weight,0) * COALESCE(s.reps,0)),0) AS v,
-      COUNT(s.id) AS c
-     FROM workouts w JOIN workout_exercises we ON we.workout_id = w.id JOIN sets s ON s.workout_exercise_id = we.id
-     WHERE w.finished_at IS NOT NULL AND w.started_at >= ? AND s.reps > 0
+      SUM(CASE WHEN s.set_type != 'warmup' THEN 1 ELSE 0 END) AS c
+     FROM workouts w JOIN workout_exercises we ON we.workout_id = w.id JOIN exercises e ON e.id = we.exercise_id JOIN sets s ON s.workout_exercise_id = we.id
+     WHERE w.finished_at IS NOT NULL AND w.started_at >= ? AND s.done = 1 AND s.reps > 0 AND ${STRENGTH_KIND_SQL}
      GROUP BY w.id`,
     from,
   );
@@ -929,13 +1109,50 @@ export async function weeklyVolume(db: SQLiteDatabase, weeks = 8) {
   return buckets;
 }
 
+/** Haftalık kardiyo özeti: hafta başına dakika, km ve seans sayısı (yalnızca kardiyo; süreli hareketler hariç). */
+export async function weeklyCardio(db: SQLiteDatabase, weeks = 8) {
+  const from = startOfWeek(Date.now()) - (weeks - 1) * 7 * 86400000;
+  const rows = await db.getAllAsync<{ started_at: number; sec: number; m: number }>(
+    `SELECT w.started_at, COALESCE(SUM(s.duration_sec),0) AS sec, COALESCE(SUM(s.distance_m),0) AS m
+     FROM workouts w JOIN workout_exercises we ON we.workout_id = w.id JOIN exercises e ON e.id = we.exercise_id JOIN sets s ON s.workout_exercise_id = we.id
+     WHERE w.finished_at IS NOT NULL AND w.started_at >= ? AND e.kind = 'cardio' AND ${TIME_DONE_SQL}
+     GROUP BY w.id`,
+    from,
+  );
+  const buckets: { week: number; minutes: number; km: number; sessions: number }[] = [];
+  for (let i = 0; i < weeks; i++) buckets.push({ week: from + i * 7 * 86400000, minutes: 0, km: 0, sessions: 0 });
+  for (const r of rows) {
+    const idx = Math.floor((startOfWeek(r.started_at) - from) / (7 * 86400000));
+    const b = buckets[Math.min(Math.max(idx, 0), weeks - 1)];
+    b.minutes += r.sec / 60;
+    b.km += r.m / 1000;
+    b.sessions += 1;
+  }
+  return buckets;
+}
+
+export type CardioExerciseSession = { workout_id: number; started_at: number; duration_sec: number; distance_m: number; best_pace: number | null; sets: number; max_set_sec: number; max_set_m: number };
+
+/** Bir kardiyo/süreli egzersizin seans seans geçmişi (eskiden yeniye). */
+export async function cardioHistory(db: SQLiteDatabase, exerciseId: number) {
+  return db.getAllAsync<CardioExerciseSession>(
+    `SELECT w.id AS workout_id, w.started_at, SUM(s.duration_sec) AS duration_sec, COALESCE(SUM(s.distance_m),0) AS distance_m,
+       MIN(CASE WHEN s.distance_m > 0 THEN s.duration_sec * 1000.0 / s.distance_m END) AS best_pace, COUNT(s.id) AS sets,
+       MAX(s.duration_sec) AS max_set_sec, COALESCE(MAX(s.distance_m),0) AS max_set_m
+     FROM workouts w JOIN workout_exercises we ON we.workout_id = w.id JOIN sets s ON s.workout_exercise_id = we.id
+     WHERE we.exercise_id = ? AND w.finished_at IS NOT NULL AND ${TIME_DONE_SQL}
+     GROUP BY w.id ORDER BY w.started_at ASC`,
+    exerciseId,
+  );
+}
+
 /** Son N günde kas grubu başına tamamlanan set sayısı. */
 export async function muscleSets(db: SQLiteDatabase, days = 7) {
   return db.getAllAsync<{ muscle: string; sets: number }>(
     `SELECT e.muscle, COUNT(s.id) AS sets
      FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id
      JOIN exercises e ON e.id = we.exercise_id JOIN workouts w ON w.id = we.workout_id
-     WHERE w.finished_at IS NOT NULL AND w.started_at >= ? AND ${REAL_DONE_SQL} AND s.set_type != 'warmup'
+     WHERE w.finished_at IS NOT NULL AND w.started_at >= ? AND ${REAL_DONE_SQL} AND s.set_type != 'warmup' AND ${STRENGTH_KIND_SQL}
      GROUP BY e.muscle ORDER BY sets DESC`,
     Date.now() - days * 86400000,
   );
@@ -947,6 +1164,7 @@ export type ExerciseSession = {
   best1rm: number;
   top_weight: number;
   volume: number;
+  max_reps: number;
   sets: string; // "60x8, 60x8"
 };
 
@@ -956,6 +1174,7 @@ export async function exerciseHistory(db: SQLiteDatabase, exerciseId: number) {
       MAX(${e1rmSql('s.weight', 's.reps')}) AS best1rm,
       MAX(COALESCE(s.weight,0)) AS top_weight,
       SUM(COALESCE(s.weight,0) * COALESCE(s.reps,0)) AS volume,
+      COALESCE(MAX(CASE WHEN s.set_type NOT IN ('warmup','drop') THEN s.reps END), 0) AS max_reps,
       GROUP_CONCAT(COALESCE(s.weight,0) || 'x' || COALESCE(s.reps,0), ', ') AS sets
      FROM workouts w JOIN workout_exercises we ON we.workout_id = w.id JOIN sets s ON s.workout_exercise_id = we.id
      WHERE we.exercise_id = ? AND w.finished_at IS NOT NULL AND ${REAL_DONE_SQL}
@@ -971,7 +1190,7 @@ export async function topExercises(db: SQLiteDatabase, limit = 6) {
       MAX(${e1rmSql('s.weight', 's.reps')}) AS best1rm
      FROM exercises e JOIN workout_exercises we ON we.exercise_id = e.id
      JOIN workouts w ON w.id = we.workout_id JOIN sets s ON s.workout_exercise_id = we.id
-     WHERE w.finished_at IS NOT NULL AND ${REAL_DONE_SQL}
+     WHERE w.finished_at IS NOT NULL AND ${REAL_DONE_SQL} AND ${STRENGTH_KIND_SQL}
      GROUP BY e.id ORDER BY sessions DESC, best1rm DESC LIMIT ?`,
     limit,
   );
@@ -1060,10 +1279,81 @@ export async function muscleLastTrained(db: SQLiteDatabase) {
        SELECT e.muscle, w.id AS wid, w.started_at, COUNT(s.id) AS sets
        FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id
        JOIN exercises e ON e.id = we.exercise_id JOIN workouts w ON w.id = we.workout_id
-       WHERE w.finished_at IS NOT NULL AND ${REAL_DONE_SQL} AND s.set_type != 'warmup'
+       WHERE w.finished_at IS NOT NULL AND ${REAL_DONE_SQL} AND s.set_type != 'warmup' AND ${STRENGTH_KIND_SQL}
        GROUP BY e.muscle, w.id
      )
      SELECT p.muscle, p.started_at AS last, p.sets FROM per p
      WHERE p.started_at = (SELECT MAX(p2.started_at) FROM per p2 WHERE p2.muscle = p.muscle)`,
   );
+}
+
+// ───────────────────────── Antrenmandan rutin ─────────────────────────
+
+/**
+ * Bitmiş bir antrenmandan rutin oluşturur: egzersiz sırası, çalışma seti sayısı (ısınma hariç,
+ * yalnızca tamamlananlar), tekrar aralığı ve o antrenmandaki dinlenme süresi korunur.
+ * Hiç tamamlanmış çalışma seti olan egzersiz yoksa rutin oluşturulmaz (null döner).
+ */
+export async function createRoutineFromWorkout(db: SQLiteDatabase, workoutId: number, name: string): Promise<number | null> {
+  const rows = await db.getAllAsync<{
+    exercise_id: number;
+    name: string;
+    muscle: string;
+    equipment: string;
+    kind: ExerciseKind;
+    rep_min: number;
+    rep_max: number;
+    rest_seconds: number | null;
+    work_sets: number;
+  }>(
+    `SELECT we.exercise_id, e.name, e.muscle, e.equipment, e.kind, we.rep_min, we.rep_max, we.rest_seconds,
+       (SELECT COUNT(*) FROM sets s WHERE s.workout_exercise_id = we.id AND s.done = 1 AND s.set_type NOT IN ('warmup','drop')) AS work_sets
+     FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id
+     WHERE we.workout_id = ? ORDER BY we.position`,
+    workoutId,
+  );
+  const items: RoutineItem[] = rows
+    .filter((r) => r.work_sets > 0)
+    .map((r) => ({
+      exercise_id: r.exercise_id,
+      name: r.name,
+      muscle: r.muscle,
+      equipment: r.equipment,
+      kind: r.kind,
+      target_sets: r.work_sets,
+      rep_min: r.rep_min,
+      rep_max: r.rep_max,
+      rest_seconds: r.rest_seconds,
+    }));
+  if (items.length === 0) return null;
+  return saveRoutine(db, null, name.trim() || 'Yeni rutin', items);
+}
+
+/**
+ * Antrenmandaki kardiyo/süreli rekorları metin olarak döndürür ("En uzun süre 25:00" gibi).
+ * Önceki en iyiler, bu antrenmandan önce biten seanslardan hesaplanır.
+ */
+export async function cardioPrDetails(db: SQLiteDatabase, workoutId: number): Promise<{ name: string; texts: string[] }[]> {
+  const w = await db.getFirstAsync<{ started_at: number }>('SELECT started_at FROM workouts WHERE id = ?', workoutId);
+  if (!w) return [];
+  const prs = await db.getAllAsync<{ exercise_id: number; name: string; kind: ExerciseKind; duration_sec: number | null; distance_m: number | null }>(
+    `SELECT we.exercise_id, e.name, e.kind, s.duration_sec, s.distance_m
+     FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN exercises e ON e.id = we.exercise_id
+     WHERE we.workout_id = ? AND s.is_pr = 1 AND e.kind IN ('cardio','timed') ORDER BY we.position, s.position`,
+    workoutId,
+  );
+  const out: { name: string; texts: string[] }[] = [];
+  for (const p of prs) {
+    const prior = await db.getAllAsync<{ duration_sec: number | null; distance_m: number | null }>(
+      `SELECT s.duration_sec, s.distance_m
+       FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN workouts w ON w.id = we.workout_id
+       WHERE we.exercise_id = ? AND w.finished_at IS NOT NULL AND w.started_at < ? AND ${TIME_DONE_SQL}`,
+      p.exercise_id,
+      w.started_at,
+    );
+    const bests = prior.reduce(updateBests, EMPTY_BESTS);
+    const texts = cardioPrTexts(bests, p, p.kind as 'cardio' | 'timed');
+    out.push({ name: p.name, texts: texts.length ? texts : ['Yeni rekor'] });
+  }
+  return out;
 }

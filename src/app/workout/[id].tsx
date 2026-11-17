@@ -26,6 +26,7 @@ import {
   setSetType,
   setWorkoutExerciseRest,
   toggleSetDone,
+  updateCardioValues,
   updateSetValues,
   type SetRow as SetRowData,
   type WorkoutExerciseFull,
@@ -33,10 +34,13 @@ import {
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDuration, formatWeight, parseNumber } from '@/lib/format';
+import { formatClock, formatHold, formatKm, isTimeBased, parseClock, parseHold, parseKm } from '@/lib/cardio';
 import { haptic } from '@/lib/haptics';
 import {
-  adjustAfterSet,
+  adjustBodyweight,
   EFFORT,
+  EFFORT_NAME,
+  RULE_TABLE,
   effortLabel,
   incrementFor,
   planSets,
@@ -260,10 +264,13 @@ export default function WorkoutScreen() {
                 profileRest={profileRest}
                 onChanged={reload}
                 onSetDone={(set, isPr) => {
-                  const secs = restAfter(baseRest(ex.rest_seconds, ex.exercise_rest, profileRest), set.set_type);
-                  rest.start(secs, nextLabel(i, set.id));
+                  // kardiyoda mola sayacı başlamaz; kardiyo/süreli setlerde zorluk paneli çıkmaz
+                  if (ex.kind !== 'cardio') {
+                    const secs = restAfter(baseRest(ex.rest_seconds, ex.exercise_rest, profileRest), set.set_type);
+                    rest.start(secs, nextLabel(i, set.id));
+                  }
                   setCurrentExId(ex.id);
-                  if (set.set_type === 'normal' || set.set_type === 'failure') setAskEffort({ setId: set.id, exName: ex.name });
+                  if (!isTimeBased(ex.kind) && (set.set_type === 'normal' || set.set_type === 'failure')) setAskEffort({ setId: set.id, exName: ex.name });
                   if (isPr) {
                     haptic.success();
                     setPrToast(ex.name);
@@ -338,8 +345,13 @@ function nextTarget(exercises: WorkoutExerciseFull[], increments: Increments, pr
   const start = Math.max(0, exercises.findIndex((e) => e.id === preferExId));
   const ordered = [...exercises.slice(start), ...exercises.slice(0, start)];
   for (const ex of ordered) {
+    if (ex.kind === 'cardio') continue; // kardiyoda mola yok
     const { rows } = planRows(ex, incrementFor(ex.equipment, increments));
     const next = rows.find((r) => !r.s.done);
+    if (next && ex.kind === 'timed') {
+      const d = ex.cardioSuggestion?.duration_sec;
+      return `${ex.name} · ${setLabel(ex.sets, next.s)}${d ? ` · ${formatHold(d)}` : ''}`;
+    }
     if (next) {
       const what = next.phWeight != null ? `${formatWeight(next.phWeight)} kg × ${next.phReps}` : `${next.phReps} tekrar`;
       return `${ex.name} · ${setLabel(ex.sets, next.s)} · ${what}`;
@@ -449,6 +461,8 @@ function ExerciseBlock({
   const anyDone = ex.sets.some((s) => s.done);
 
   const { rows, liveNote, plan } = planRows(ex, step);
+  const timeBased = isTimeBased(ex.kind);
+  const isCardio = ex.kind === 'cardio';
 
   const openRest = () =>
     sheet.custom({
@@ -471,15 +485,21 @@ function ExerciseBlock({
     sheet.actions({
       title: ex.name,
       actions: [
-        {
-          label: 'Isınma seti ekle',
-          icon: 'flame',
-          onPress: async () => {
-            await addSet(db, ex.id, 'warmup');
-            onChanged();
-          },
-        },
-        { label: `Dinlenme: ${formatRest(rest)}`, icon: 'timer', onPress: openRest },
+        ...(timeBased
+          ? isCardio
+            ? []
+            : [{ label: `Dinlenme: ${formatRest(rest)}`, icon: 'timer' as const, onPress: openRest }]
+          : [
+              {
+                label: 'Isınma seti ekle',
+                icon: 'flame' as const,
+                onPress: async () => {
+                  await addSet(db, ex.id, 'warmup');
+                  onChanged();
+                },
+              },
+              { label: `Dinlenme: ${formatRest(rest)}`, icon: 'timer' as const, onPress: openRest },
+            ]),
         { label: 'Geçmişi ve grafikleri gör', icon: 'progress', onPress: () => router.push(`/exercise/${ex.exercise_id}`) },
         {
           label: 'Egzersizi kaldır',
@@ -502,18 +522,30 @@ function ExerciseBlock({
             {ex.name}
           </T>
           <T variant="caption" secondary>
-            {ex.muscle} · {ex.rep_min}-{ex.rep_max} tekrar
+            {timeBased ? `${ex.muscle} · ${isCardio ? 'süre + mesafe' : 'süre'}` : `${ex.muscle} · ${ex.rep_min}-${ex.rep_max} tekrar`}
           </T>
         </PressableScale>
-        <PressableScale onPress={openRest} accessibilityLabel="Dinlenme süresini değiştir" style={[styles.restChip, { backgroundColor: t.primarySoft }]}>
-          <Icon name="timer" size={12} color={t.primary} />
-          <T variant="caption" color={t.primary} style={{ fontFamily: Font.bold }}>
-            {formatRest(rest)}
-          </T>
-        </PressableScale>
+        {!isCardio && (
+          <PressableScale onPress={openRest} accessibilityLabel="Dinlenme süresini değiştir" style={[styles.restChip, { backgroundColor: t.primarySoft }]}>
+            <Icon name="timer" size={12} color={t.primary} />
+            <T variant="caption" color={t.primary} style={{ fontFamily: Font.bold }}>
+              {formatRest(rest)}
+            </T>
+          </PressableScale>
+        )}
         <IconButton icon="more" onPress={openMenu} bg="transparent" color={t.textSecondary} />
       </View>
 
+      {timeBased ? (
+        <View style={[styles.suggestion, { backgroundColor: t.surfaceRaised }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Icon name="target" size={13} color={t.primary} />
+            <T variant="caption" color={t.primary} style={{ fontFamily: Font.bold, flex: 1 }}>
+              {ex.cardioSuggestion?.reason}
+            </T>
+          </View>
+        </View>
+      ) : (
       <View style={[styles.suggestion, { backgroundColor: t.surfaceRaised }]}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Icon name={KIND_ICON[sug.kind]} size={13} color={sugColor} />
@@ -526,6 +558,16 @@ function ExerciseBlock({
             </T>
           )}
           <View style={{ flex: 1 }} />
+          <PressableScale
+            onPress={() => sheet.custom({ title: 'Öneri kuralları', render: () => <RulesSheet step={step} /> })}
+            accessibilityRole="button"
+            accessibilityLabel="Öneri kurallarını göster"
+            hitSlop={10}
+            style={[styles.helpBtn, { backgroundColor: t.surfacePressed }]}>
+            <T variant="caption" color={t.textSecondary} style={{ fontFamily: Font.bold }}>
+              ?
+            </T>
+          </PressableScale>
           <ConfidenceDots level={sug.confidence} />
         </View>
         <T variant="caption" secondary>
@@ -546,7 +588,6 @@ function ExerciseBlock({
         {(sug.e1rm != null || sug.plateau) && (
           <T variant="caption" muted>
             {sug.e1rm != null ? `Tahmini 1RM ${formatWeight(Math.round(sug.e1rm * 2) / 2)} kg` : ''}
-            {sug.e1rm != null ? ` · ${sug.targetRir} tekrar yedekte bitir` : ''}
             {sug.plateau ? ' · ⚠︎ plato' : ''}
           </T>
         )}
@@ -573,20 +614,43 @@ function ExerciseBlock({
           </PressableScale>
         )}
       </View>
+      )}
 
       <View style={styles.headRow}>
         <T variant="overline" muted style={styles.colSet}>
           Set
         </T>
-        <T variant="overline" muted style={styles.colPrev}>
-          Önceki
-        </T>
-        <T variant="overline" muted style={styles.colInput}>
-          kg
-        </T>
-        <T variant="overline" muted style={styles.colInput}>
-          Tekrar
-        </T>
+        {!isCardio && (
+          <T variant="overline" muted style={styles.colPrev}>
+            Önceki
+          </T>
+        )}
+        {timeBased ? (
+          <>
+            <T variant="overline" muted style={styles.colInput}>
+              {isCardio ? 'Süre dk:sn' : 'Süre'}
+            </T>
+            {isCardio && (
+              <>
+                <T variant="overline" muted style={styles.colInput}>
+                  Mesafe km
+                </T>
+                <T variant="overline" muted style={styles.colInput}>
+                  Eğim/sev.
+                </T>
+              </>
+            )}
+          </>
+        ) : (
+          <>
+            <T variant="overline" muted style={styles.colInput}>
+              {ex.kind === 'bodyweight' ? '+kg' : 'kg'}
+            </T>
+            <T variant="overline" muted style={styles.colInput}>
+              Tekrar
+            </T>
+          </>
+        )}
         <View style={styles.colCheck} />
       </View>
 
@@ -595,7 +659,15 @@ function ExerciseBlock({
           key={s.id}
           label={isWarm ? 'I' : String(idx + 1)}
           set={s}
-          prevLabel={prev?.reps ? `${formatWeight(prev.weight)}×${prev.reps}` : '–'}
+          kind={ex.kind}
+          prevLabel={
+            timeBased
+              ? formatClock(ex.previousCardio[0]?.sets[idx]?.duration_sec ?? ex.previousCardio[0]?.sets.at(-1)?.duration_sec ?? null)
+              : prev?.reps
+                ? `${formatWeight(prev.weight)}×${prev.reps}`
+                : '–'
+          }
+          cardioHint={ex.cardioSuggestion}
           placeholderWeight={phWeight}
           placeholderReps={phReps}
           db={db}
@@ -651,6 +723,12 @@ function planRows(ex: WorkoutExerciseFull, step: number) {
 }
 
 function computePlanRows(ex: WorkoutExerciseFull, step: number) {
+  if (isTimeBased(ex.kind)) {
+    // kardiyo/süreli: ağırlık planı yok
+    let n = 0;
+    const rows = ex.sets.map((s) => ({ s, isWarm: false, idx: n++, prev: undefined as undefined, phWeight: null as number | null, phReps: 0 }));
+    return { rows, liveNote: null as string | null, plan: [] as SetPlan[] };
+  }
   const sug = ex.suggestion;
   const prevSets = ex.previous;
   // Çalışma setleri (ısınma ve drop hariç) için set set plan: piramitte hafiften ağıra
@@ -685,14 +763,14 @@ function computePlanRows(ex: WorkoutExerciseFull, step: number) {
     if (s.done && s.weight != null) lastDoneWeight = s.weight;
     if (!isWarm && !isDrop) {
       if (s.done) {
-        const done = { weight: s.weight, reps: s.reps, rir: s.rir };
+        const done = { weight: s.weight, reps: s.reps, rir: s.rir, failure: s.set_type === 'failure' };
         if (step === 0) {
           // vücut ağırlığı: kalan setlerin tekrarını ayarla
-          const adj = adjustAfterSet({ weight: null, reps: plan[k]?.reps ?? sug.reps }, done, sug.targetRir, 0, { repMin: ex.rep_min, repMax: ex.rep_max });
+          const adj = adjustBodyweight(plan[k]?.reps ?? sug.reps, done);
           plan = plan.map((p, j) => (j > k ? { ...p, reps: adj.reps } : p));
           if (adj.note) liveNote = adj.note;
         } else {
-          const r = replanAfter(plan, k, done, step, { style: ex.style, repMin: ex.rep_min });
+          const r = replanAfter(plan, k, done, step);
           plan = r.plan;
           if (r.note) liveNote = r.note;
         }
@@ -702,6 +780,35 @@ function computePlanRows(ex: WorkoutExerciseFull, step: number) {
     rows.push({ s, isWarm, idx, prev, phWeight, phReps });
   }
   return { rows, liveNote, plan: initialPlan };
+}
+
+// ───────────────────────── Öneri kuralları ─────────────────────────
+
+function RulesSheet({ step }: { step: number }) {
+  const t = useTheme();
+  return (
+    <View style={{ gap: Spacing.md }}>
+      <T variant="caption" secondary>
+        1 adım = ekipmanın artış değeri{step > 0 ? ` (bu harekette ${formatWeight(step)} kg)` : ' (vücut ağırlığında 1 tekrar)'}. Öneri en ağır sete göre hesaplanır; zorluk seçmezsen hedef tekrar tutturulduysa İyi, 1 eksikse Zor, 2+ eksikse Tükendim sayılır.
+      </T>
+      {RULE_TABLE.map((r) => (
+        <View key={r.effort} style={[styles.ruleRow, { backgroundColor: t.surfaceRaised }]}>
+          <T variant="label" style={{ fontFamily: Font.heavy }}>
+            {EFFORT_NAME[r.effort]} <T variant="caption" muted>· {r.meaning}</T>
+          </T>
+          <T variant="caption" secondary>
+            Seans içi: {r.inSession}
+          </T>
+          <T variant="caption" secondary>
+            Sonraki antrenman: {r.nextWorkout}
+          </T>
+        </View>
+      ))}
+      <T variant="caption" muted>
+        Vücut ağırlığında: Kolay +2 · İyi +1 · Zor aynı · Tükendim −1 tekrar (hedefin altındaysa ya da zorluk seçilmediyse gerileme yok). 14 günden uzun aradan sonra hafif başlanır. Tahmini 1RM yalnızca bilgidir.
+      </T>
+    </View>
+  );
 }
 
 // ───────────────────────── Dinlenme seçici ─────────────────────────
@@ -759,6 +866,8 @@ function SetNoteEditor({ initial, onSave }: { initial: string; onSave: (text: st
 function SetRow({
   label,
   set,
+  kind,
+  cardioHint,
   prevLabel,
   placeholderWeight,
   placeholderReps,
@@ -770,6 +879,8 @@ function SetRow({
 }: {
   label: string;
   set: SetRowData;
+  kind: WorkoutExerciseFull['kind'];
+  cardioHint: WorkoutExerciseFull['cardioSuggestion'];
   prevLabel: string;
   placeholderWeight: number | null;
   placeholderReps: number;
@@ -782,6 +893,12 @@ function SetRow({
   const t = useTheme();
   const [w, setW] = useState(set.weight != null ? formatWeight(set.weight) : '');
   const [r, setR] = useState(set.reps != null ? String(set.reps) : '');
+  const [dur, setDur] = useState(set.duration_sec ? formatClock(set.duration_sec) : '');
+  const [dist, setDist] = useState(set.distance_m ? formatKm(set.distance_m) : '');
+  const [lvl, setLvl] = useState(set.level != null ? formatWeight(set.level) : '');
+  const timeBased = isTimeBased(kind);
+  const isCardio = kind === 'cardio';
+  const parseDur = (text: string) => (isCardio ? parseClock(text) : parseHold(text));
   const done = !!set.done;
   const type = set.set_type;
   const typeColor = type === 'warmup' ? t.gold : type === 'drop' ? t.violet : type === 'failure' ? t.danger : t.textSecondary;
@@ -789,6 +906,10 @@ function SetRow({
   const short = SET_TYPES.find((x) => x.key === type)?.short;
 
   const save = async () => {
+    if (timeBased) {
+      await updateCardioValues(db, set.id, { duration_sec: parseDur(dur), distance_m: isCardio ? parseKm(dist) : null, level: isCardio ? parseNumber(lvl) : null });
+      return;
+    }
     await updateSetValues(db, set.id, { weight: parseNumber(w), reps: parseNumber(r) });
   };
 
@@ -796,6 +917,20 @@ function SetRow({
     if (done) {
       await toggleSetDone(db, set.id, false);
       haptic.tap();
+      onChanged();
+      return;
+    }
+    if (timeBased) {
+      const duration = parseDur(dur) ?? cardioHint?.duration_sec ?? null;
+      if (!duration) {
+        haptic.warning();
+        return;
+      }
+      const distance = isCardio ? (parseKm(dist) ?? null) : null;
+      setDur(formatClock(duration));
+      await updateCardioValues(db, set.id, { duration_sec: duration, distance_m: distance, level: isCardio ? parseNumber(lvl) : null });
+      const isPr = await toggleSetDone(db, set.id, true, profileRest);
+      onDone(isPr);
       onChanged();
       return;
     }
@@ -907,7 +1042,11 @@ function SetRow({
             )}
           </View>
         </PressableScale>
-        {done && type !== 'warmup' ? (
+        {isCardio ? null : timeBased ? (
+          <T variant="label" muted style={styles.colPrev} numberOfLines={1}>
+            {prevLabel}
+          </T>
+        ) : done && type !== 'warmup' ? (
           <PressableScale onPress={openEffort} accessibilityLabel={set.rir != null ? `Zorluk: ${effortLabel(set.rir)}. Değiştir` : 'Zorluğu seç'} style={styles.colPrev} scaleTo={0.9} hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}>
             <View style={[styles.effort, { backgroundColor: set.rir != null ? effortBg : 'transparent', borderColor: set.rir != null ? 'transparent' : t.borderStrong }]}>
               <T variant="caption" color={set.rir != null ? effortFg : t.textMuted} style={{ fontFamily: Font.bold, fontSize: 11 }}>
@@ -920,6 +1059,51 @@ function SetRow({
             {prevLabel}
           </T>
         )}
+        {timeBased ? (
+          <>
+            <TextInput
+              value={dur}
+              onChangeText={setDur}
+              onEndEditing={save}
+              placeholder={cardioHint?.duration_sec ? formatClock(cardioHint.duration_sec) : isCardio ? '20:00' : '0:45'}
+              placeholderTextColor={t.textMuted}
+              keyboardType="numbers-and-punctuation"
+              selectTextOnFocus
+              editable={!done}
+              accessibilityLabel="Süre"
+              style={[styles.input, styles.colInput, { backgroundColor: done ? 'transparent' : t.surfaceRaised, color: t.text }]}
+            />
+            {isCardio && (
+              <>
+                <TextInput
+                  value={dist}
+                  onChangeText={setDist}
+                  onEndEditing={save}
+                  placeholder={cardioHint?.distance_m ? formatKm(cardioHint.distance_m) : '–'}
+                  placeholderTextColor={t.textMuted}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  editable={!done}
+                  accessibilityLabel="Mesafe (km)"
+                  style={[styles.input, styles.colInput, { backgroundColor: done ? 'transparent' : t.surfaceRaised, color: t.text }]}
+                />
+                <TextInput
+                  value={lvl}
+                  onChangeText={setLvl}
+                  onEndEditing={save}
+                  placeholder="–"
+                  placeholderTextColor={t.textMuted}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  editable={!done}
+                  accessibilityLabel="Eğim veya seviye"
+                  style={[styles.input, styles.colInput, { backgroundColor: done ? 'transparent' : t.surfaceRaised, color: t.text }]}
+                />
+              </>
+            )}
+          </>
+        ) : (
+          <>
         <TextInput
           value={w}
           onChangeText={setW}
@@ -942,6 +1126,8 @@ function SetRow({
           editable={!done}
           style={[styles.input, styles.colInput, { backgroundColor: done ? 'transparent' : t.surfaceRaised, color: t.text }]}
         />
+          </>
+        )}
         <PressableScale onPress={toggle} accessibilityLabel={done ? 'Seti geri al' : 'Seti tamamla'} accessibilityState={{ checked: done }} style={styles.colCheck} hapticOnPress={false} scaleTo={0.82}>
           <View style={[styles.check, { backgroundColor: done ? t.success : t.surfaceRaised, borderColor: done ? t.success : t.borderStrong }]}>
             <Icon name="check" size={17} color={done ? t.onPrimary : t.textMuted} weight="bold" />
@@ -973,6 +1159,8 @@ const styles = StyleSheet.create({
   finishBtn: { paddingHorizontal: 20, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   exHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   restChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, height: 28, borderRadius: 14 },
+  helpBtn: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  ruleRow: { borderRadius: Radius.md, padding: Spacing.md, gap: 2 },
   suggestion: {
     gap: 4,
     marginTop: Spacing.md,

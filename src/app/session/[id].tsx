@@ -20,7 +20,8 @@ import {
 } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDayLong, formatDuration, formatMinutes, formatVolume, formatWeight, parseNumber } from '@/lib/format';
+import { formatDayLong, formatDuration, formatMinutes, formatWeight, parseNumber } from '@/lib/format';
+import { describeCardioSet, formatClock, formatKm, formatMin, isTimeBased, parseClock, parseHold, parseKm } from '@/lib/cardio';
 import { haptic } from '@/lib/haptics';
 import { leave } from '@/lib/nav';
 import { EFFORT, effortLabel, estimate1RM } from '@/lib/progression';
@@ -50,9 +51,10 @@ export default function Session() {
 
   if (!data) return null;
   const { workout, exercises } = data;
-  // ısınma setleri set sayısına ve hacme dahil değil (kas dağılımı ve özet ekranıyla tutarlı)
-  const sets = exercises.flatMap((e) => e.sets).filter((s) => s.set_type !== 'warmup');
-  const volume = sets.reduce((acc, s) => acc + (s.weight ?? 0) * (s.reps ?? 0), 0);
+  // ısınma setleri set sayısına dahil değil (kas dağılımı ve özet ekranıyla tutarlı)
+  // kardiyo/süreli setler set sayısına girmez; ayrı "Kardiyo" süresi olarak gösterilir
+  const sets = exercises.filter((e) => !isTimeBased(e.kind)).flatMap((e) => e.sets).filter((s) => s.set_type !== 'warmup');
+  const cardioSec = exercises.filter((e) => e.kind === 'cardio').flatMap((e) => e.sets).reduce((a, s) => a + (s.done ? (s.duration_sec ?? 0) : 0), 0);
   const rests = sets.filter((s) => s.rest_taken != null);
   const avgRest = rests.length ? Math.round(rests.reduce((a, s) => a + (s.rest_taken ?? 0), 0) / rests.length) : null;
 
@@ -145,7 +147,8 @@ export default function Session() {
           <View style={{ flexDirection: 'row' }}>
             <Stat label="Süre" value={formatMinutes((workout.finished_at ?? workout.started_at) - workout.started_at)} />
             <Stat label="Set" value={String(sets.length)} />
-            <Stat label="Hacim" value={formatVolume(volume)} />
+            <Stat label="Egzersiz" value={String(exercises.length)} />
+            {cardioSec > 0 && <Stat label="Kardiyo" value={formatMin(cardioSec / 60)} />}
             {avgRest != null && <Stat label="Ort. mola" value={formatDuration(avgRest * 1000)} />}
           </View>
           <T variant="caption" muted style={{ marginTop: 6 }}>
@@ -176,7 +179,7 @@ export default function Session() {
         )}
 
         {exercises.map((ex) => {
-          const best = Math.max(0, ...ex.sets.filter((s) => s.set_type !== 'warmup').map((s) => estimate1RM(s.weight, s.reps)));
+          const best = isTimeBased(ex.kind) ? 0 : Math.max(0, ...ex.sets.filter((s) => s.set_type !== 'warmup').map((s) => estimate1RM(s.weight, s.reps)));
           let n = 0;
           return (
             <Card key={ex.id} style={{ marginTop: Spacing.md }}>
@@ -202,9 +205,9 @@ export default function Session() {
                   const warm = s.set_type === 'warmup';
                   const label = warm ? 'I' : String(++n);
                   return editing ? (
-                    <EditSetRow key={s.id} set={s} label={label} db={db} sheet={sheet} onChanged={reload} />
+                    <EditSetRow key={s.id} set={s} label={label} kind={ex.kind} db={db} sheet={sheet} onChanged={reload} />
                   ) : (
-                    <ViewSetRow key={s.id} set={s} label={label} />
+                    <ViewSetRow key={s.id} set={s} label={label} kind={ex.kind} />
                   );
                 })}
               </View>
@@ -236,7 +239,7 @@ export default function Session() {
   );
 }
 
-function ViewSetRow({ set: s, label }: { set: SetRow; label: string }) {
+function ViewSetRow({ set: s, label, kind }: { set: SetRow; label: string; kind: string }) {
   const t = useTheme();
   const warm = s.set_type === 'warmup';
   const typeInfo = SET_TYPES.find((x) => x.key === s.set_type);
@@ -247,7 +250,11 @@ function ViewSetRow({ set: s, label }: { set: SetRow; label: string }) {
           {label}
         </T>
         <T variant="body" style={{ flex: 1, fontFamily: Font.bold }}>
-          {s.weight ? `${formatWeight(s.weight)} kg` : 'Vücut'} × {s.reps ?? 0}
+          {isTimeBased(kind)
+            ? describeCardioSet(s, kind as 'cardio' | 'timed')
+            : kind === 'bodyweight'
+              ? `${s.weight ? `+${formatWeight(s.weight)} kg × ` : ''}${s.reps ?? 0} tekrar`
+              : `${s.weight ? `${formatWeight(s.weight)} kg` : 'Vücut'} × ${s.reps ?? 0}`}
         </T>
         {s.set_type !== 'normal' && s.set_type !== 'warmup' && typeInfo && (
           <Badge label={typeInfo.label} tint={s.set_type === 'drop' ? t.violet : t.danger} bg={s.set_type === 'drop' ? t.violetSoft : t.dangerSoft} />
@@ -271,12 +278,14 @@ function ViewSetRow({ set: s, label }: { set: SetRow; label: string }) {
 function EditSetRow({
   set: s,
   label,
+  kind,
   db,
   sheet,
   onChanged,
 }: {
   set: SetRow;
   label: string;
+  kind: string;
   db: Parameters<typeof editHistorySet>[0];
   sheet: ReturnType<typeof useSheet>;
   onChanged: () => Promise<unknown>;
@@ -285,11 +294,24 @@ function EditSetRow({
   const [w, setW] = useState(s.weight != null ? formatWeight(s.weight) : '');
   const [r, setR] = useState(s.reps != null ? String(s.reps) : '');
   const [note, setNote] = useState(s.note ?? '');
+  const isCardio = kind === 'cardio';
+  const timeBased = isTimeBased(kind);
+  const [dur, setDur] = useState(s.duration_sec ? formatClock(s.duration_sec) : '');
+  const [dist, setDist] = useState(s.distance_m ? formatKm(s.distance_m) : '');
+  const [lvl, setLvl] = useState(s.level != null ? formatWeight(s.level) : '');
   const warm = s.set_type === 'warmup';
   const typeInfo = SET_TYPES.find((x) => x.key === s.set_type);
 
   const saveValues = async () => {
-    await editHistorySet(db, s.id, { weight: parseNumber(w), reps: parseNumber(r) });
+    if (timeBased) {
+      await editHistorySet(db, s.id, {
+        duration_sec: isCardio ? parseClock(dur) : parseHold(dur),
+        distance_m: isCardio ? parseKm(dist) : null,
+        level: isCardio ? parseNumber(lvl) : null,
+      });
+    } else {
+      await editHistorySet(db, s.id, { weight: parseNumber(w), reps: parseNumber(r) });
+    }
     await onChanged();
   };
 
@@ -357,6 +379,48 @@ function EditSetRow({
             {s.is_pr ? '🏆' : typeInfo?.short || label}
           </T>
         </PressableScale>
+        {timeBased ? (
+          <>
+            <TextInput
+              value={dur}
+              onChangeText={setDur}
+              onEndEditing={saveValues}
+              placeholder={isCardio ? 'dk:sn' : 'sn'}
+              placeholderTextColor={t.textMuted}
+              keyboardType="numbers-and-punctuation"
+              selectTextOnFocus
+              accessibilityLabel={`Set ${label} süre`}
+              style={[styles.input, { backgroundColor: t.surface, color: t.text }]}
+            />
+            {isCardio && (
+              <>
+                <TextInput
+                  value={dist}
+                  onChangeText={setDist}
+                  onEndEditing={saveValues}
+                  placeholder="km"
+                  placeholderTextColor={t.textMuted}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  accessibilityLabel={`Set ${label} mesafe`}
+                  style={[styles.input, { backgroundColor: t.surface, color: t.text }]}
+                />
+                <TextInput
+                  value={lvl}
+                  onChangeText={setLvl}
+                  onEndEditing={saveValues}
+                  placeholder="eğim"
+                  placeholderTextColor={t.textMuted}
+                  keyboardType="decimal-pad"
+                  selectTextOnFocus
+                  accessibilityLabel={`Set ${label} eğim veya seviye`}
+                  style={[styles.input, { backgroundColor: t.surface, color: t.text }]}
+                />
+              </>
+            )}
+          </>
+        ) : (
+          <>
         <TextInput
           value={w}
           onChangeText={setW}
@@ -382,7 +446,9 @@ function EditSetRow({
           accessibilityLabel={`Set ${label} tekrar`}
           style={[styles.input, { backgroundColor: t.surface, color: t.text }]}
         />
-        {!warm && (
+          </>
+        )}
+        {!warm && !timeBased && (
           <PressableScale onPress={pickEffort} accessibilityLabel="Zorluğu değiştir" style={[styles.effortBtn, { backgroundColor: t.surface }]}>
             <T variant="caption" color={s.rir != null ? t.text : t.textMuted} style={{ fontFamily: Font.bold, fontSize: 11 }}>
               {effortLabel(s.rir) ?? 'Zorluk?'}

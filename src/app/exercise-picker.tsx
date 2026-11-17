@@ -12,6 +12,7 @@ import { addExercisesToWorkout, addHistoryExercise, createExercise, listExercise
 import { EQUIPMENT, MUSCLES } from '@/db/seed';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
+import { EXERCISE_KINDS, type ExerciseKind } from '@/lib/cardio';
 import { haptic } from '@/lib/haptics';
 import { pickerStore } from '@/lib/picker-store';
 import { formatRest } from '@/lib/rest';
@@ -31,6 +32,7 @@ export default function ExercisePicker() {
   const [creating, setCreating] = useState(false);
   const [newMuscle, setNewMuscle] = useState<string>(MUSCLES[0]);
   const [newEquip, setNewEquip] = useState<string>(EQUIPMENT[0]);
+  const [newKind, setNewKind] = useState<ExerciseKind>('strength');
 
   const filtered = useMemo(() => {
     const nq = normalize(q.trim());
@@ -54,7 +56,7 @@ export default function ExercisePicker() {
 
   const create = async () => {
     if (!q.trim()) return;
-    const id = await createExercise(db, q, newMuscle, newEquip);
+    const id = await createExercise(db, q, newMuscle, newEquip, newKind);
     await reload();
     setSelected((s) => [...s, id]);
     setCreating(false);
@@ -121,6 +123,27 @@ export default function ExercisePicker() {
             <Animated.View entering={FadeInDown} style={[styles.createBox, { backgroundColor: t.surfaceRaised, borderColor: t.border }]}>
               <T variant="heading">Yeni egzersiz: {q.trim()}</T>
               <T variant="overline" secondary>
+                Tür
+              </T>
+              <View style={styles.wrap}>
+                {EXERCISE_KINDS.map((k) => (
+                  <Chip
+                    key={k.key}
+                    label={k.label}
+                    active={newKind === k.key}
+                    onPress={() => {
+                      setNewKind(k.key);
+                      if (k.key === 'cardio') setNewMuscle('Kardiyo');
+                      else if (newMuscle === 'Kardiyo') setNewMuscle(k.key === 'timed' ? 'Karın' : MUSCLES[0]);
+                      if (k.key === 'bodyweight') setNewEquip('Vücut');
+                    }}
+                  />
+                ))}
+              </View>
+              <T variant="caption" muted>
+                {EXERCISE_KINDS.find((k) => k.key === newKind)?.hint}
+              </T>
+              <T variant="overline" secondary>
                 Kas grubu
               </T>
               <View style={styles.wrap}>
@@ -156,6 +179,7 @@ export default function ExercisePicker() {
                 </T>
                 <T variant="caption" secondary>
                   {item.muscle} · {item.equipment}
+                  {item.kind === 'cardio' ? ' · süre + mesafe' : item.kind === 'timed' ? ' · süreli' : ''}
                   {item.rest_seconds ? ` · ${formatRest(item.rest_seconds)} mola` : ''}
                   {item.use_count > 0 ? ` · ${item.use_count}×` : ''}
                 </T>

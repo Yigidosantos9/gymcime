@@ -1,9 +1,9 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { SEED_EXERCISES } from './seed';
+import { SEED_EXERCISES, seedKind } from './seed';
 
 /** Güncel şema sürümü (PRAGMA user_version). Yedek dosyaları da bu sürümü taşır. */
-export const DB_VERSION = 6;
+export const DB_VERSION = 7;
 
 /** Ağır bileşik hareketler: varsayılan 3 dk dinlenme. */
 const HEAVY = ['squat', 'front-squat', 'deadlift', 'bench', 'incline-bench', 'ohp', 'rdl', 'bb-row', 'hip-thrust', 'hack-squat', 'leg-press', 'pullup', 'dips', 'cgbp'];
@@ -30,12 +30,35 @@ export async function applySeedNames(db: Queryable) {
 }
 
 /**
+ * v7: egzersiz türleri. Seed egzersizlerine tür + (min'siz) ad uygular; "Kardiyo" kas grubundaki özel egzersizler cardio olur.
+ * Eskiden dakika `reps` alanına yazılan kardiyo setleri `duration_sec`e taşınır. İdempotent. Transaction açmaz.
+ */
+export async function applySeedKinds(db: Queryable) {
+  for (const [slug, name, alias, , equipment] of SEED_EXERCISES) {
+    await db.runAsync('UPDATE exercises SET kind = ?, name = ?, alias = ? WHERE slug = ? AND is_custom = 0', seedKind(slug, equipment), name, alias, slug);
+  }
+  await db.runAsync("UPDATE exercises SET kind = 'cardio' WHERE is_custom = 1 AND muscle = 'Kardiyo' AND kind = 'strength'");
+  await db.runAsync(
+    `UPDATE sets SET duration_sec = CAST(reps AS INTEGER) * 60, reps = NULL, weight = NULL
+     WHERE duration_sec IS NULL AND reps > 0 AND workout_exercise_id IN (
+       SELECT we.id FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id WHERE e.kind = 'cardio')`,
+  );
+  // süreli hareketler (plank): eski kayıtta saniye `reps`teydi → olduğu gibi duration_sec (dakika DEĞİL)
+  await db.runAsync(
+    `UPDATE sets SET duration_sec = CAST(reps AS INTEGER), reps = NULL, weight = NULL
+     WHERE duration_sec IS NULL AND reps > 0 AND workout_exercise_id IN (
+       SELECT we.id FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id WHERE e.kind = 'timed')`,
+  );
+}
+
+/**
  * Eski şemalı (`fromVersion`) bir yedekten gelen VERİYE, o sürümden sonraki migrasyonların
  * veri adımlarını uygular. Şema (sütun) değişiklikleri zaten güncel şemada mevcuttur. Transaction açmaz.
  */
 export async function applyDataMigrations(db: Queryable, fromVersion: number) {
   if (fromVersion < 2) await applyDefaultRest(db);
   if (fromVersion < 3) await applySeedNames(db);
+  if (fromVersion < 7) await applySeedKinds(db);
   // v4-v6: yalnızca yeni tablo/sütun; veri adımı yok
 }
 
@@ -222,6 +245,20 @@ export async function migrateDb(db: SQLiteDatabase) {
     // Set notu (geçmiş antrenmanı düzenleme + antrenman ekranı). Antrenman notu `workouts.note` v1'den beri var.
     await addColumn(db, 'sets', 'note', 'TEXT');
     version = 6;
+    await setVersion(db, version);
+  }
+
+  if (version < 7) {
+    // Kardiyo ve süreli hareketler: egzersiz türü + set başına süre/mesafe/seviye/kalori
+    await addColumn(db, 'exercises', 'kind', "TEXT NOT NULL DEFAULT 'strength'");
+    await addColumn(db, 'sets', 'duration_sec', 'INTEGER');
+    await addColumn(db, 'sets', 'distance_m', 'REAL');
+    await addColumn(db, 'sets', 'level', 'REAL');
+    await addColumn(db, 'sets', 'kcal', 'REAL');
+    await db.withTransactionAsync(async () => {
+      await applySeedKinds(db);
+    });
+    version = 7;
     await setVersion(db, version);
   }
 }

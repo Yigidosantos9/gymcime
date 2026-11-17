@@ -1,12 +1,13 @@
 import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
-import { Button, Card, Chip, Divider, PressableScale, SectionHeader, T } from '@/components/ui';
+import { Button, Card, Chip, Divider, IconButton, PressableScale, SectionHeader, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
+import { FOOD_CATEGORIES, type FoodCategoryId, type FoodTr } from '@/data/foods-tr';
 import { addFoodLog, addFoodLogs, favoriteFoods, recentFoods, toggleFavorite, type Food } from '@/db/nutrition-queries';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
@@ -16,6 +17,7 @@ import { parseNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { leave } from '@/lib/nav';
 import { dayKey, defaultMeal, MEALS, type Meal } from '@/lib/nutrition';
+import { nutritionForGrams, portionGrams, searchFoods, servingText } from '@/lib/food-search';
 import { pickMealPhoto, type MealPhoto } from '@/lib/photo';
 
 type Row = { name: string; kcal: string; protein: string; carbs: string; fat: string; portion: string };
@@ -30,6 +32,7 @@ export default function AddFood() {
   const day = params.day ?? today;
   const [meal, setMeal] = useState<Meal>((MEALS as readonly string[]).includes(params.meal ?? '') ? (params.meal as Meal) : defaultMeal(new Date().getHours()));
   const [saving, setSaving] = useState(false);
+  const busy = useRef(false); // aynı render'daki hızlı çift dokunuşu da engeller
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<Row>({ name: '', kcal: '', protein: '', carbs: '', fat: '', portion: '' });
   const { data, reload } = useDbQuery(async (db) => ({ fav: await favoriteFoods(db), recent: await recentFoods(db), key: await hasApiKey() }));
@@ -39,7 +42,8 @@ export default function AddFood() {
 
   /** Çift dokunmayı engeller: kayıt sürerken ikinci çağrı yok sayılır. */
   const guarded = async (fn: () => Promise<void>) => {
-    if (saving) return;
+    if (busy.current) return;
+    busy.current = true;
     setSaving(true);
     setError(null);
     try {
@@ -47,6 +51,7 @@ export default function AddFood() {
       haptic.success();
       leave();
     } catch (e) {
+      busy.current = false;
       setSaving(false);
       haptic.warning();
       setError(`Kaydedilemedi: ${e instanceof Error && e.message ? e.message : 'bilinmeyen hata'}. Tekrar dene.`);
@@ -80,6 +85,12 @@ export default function AddFood() {
             <Chip key={m} label={m} active={meal === m} onPress={() => setMeal(m)} />
           ))}
         </View>
+
+        <SectionHeader title="Yiyecek ara" />
+        <FoodSearch
+          saving={saving}
+          onAdd={(f, serving, n) => guarded(() => addFoodLog(db, { day, meal, name: f.name, kcal: n.kcal, protein: n.protein, carbs: n.carbs, fat: n.fat, serving, source: 'manual' }).then(() => {}))}
+        />
 
         <SectionHeader title="Hızlı ekle" />
         <Card style={{ gap: Spacing.md }}>
@@ -151,6 +162,153 @@ export default function AddFood() {
         />
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+const fmt1 = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',');
+
+/** Türkçe yemek veritabanında arama + porsiyon seçici. Veritabanında yoksa aşağıdaki hızlı ekle / AI akışı kullanılır. */
+function FoodSearch({ saving, onAdd }: { saving: boolean; onAdd: (f: FoodTr, serving: string, n: { kcal: number; protein: number; carbs: number; fat: number }) => Promise<void> | undefined }) {
+  const t = useTheme();
+  const [query, setQuery] = useState('');
+  const [cat, setCat] = useState<FoodCategoryId | null>(null);
+  const [picked, setPicked] = useState<FoodTr | null>(null);
+  const [portionIdx, setPortionIdx] = useState(0); // -1 = serbest gram
+  const [qty, setQty] = useState(1);
+  const [gramText, setGramText] = useState('100');
+
+  const searching = query.trim().length > 0 || cat != null;
+  const results = useMemo(() => (searching ? searchFoods(query, cat, 30) : []), [query, cat, searching]);
+
+  const pick = (f: FoodTr) => {
+    setPicked(f);
+    setPortionIdx(0);
+    setQty(1);
+    setGramText('100');
+  };
+
+  if (picked) {
+    const portion = portionIdx >= 0 ? picked.portions[portionIdx] : null;
+    const grams = portion ? portionGrams(portion, qty) : num(gramText);
+    const n = nutritionForGrams(picked, grams);
+    return (
+      <Card style={{ gap: Spacing.md }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flex: 1 }}>
+            <T variant="heading" numberOfLines={2}>
+              {picked.name}
+            </T>
+            <T variant="caption" secondary>
+              100 {picked.unit} · {Math.round(picked.kcal)} kcal · P {fmt1(picked.protein)} K {fmt1(picked.carbs)} Y {fmt1(picked.fat)}
+            </T>
+          </View>
+          <IconButton icon="close" label="Seçimi kapat" onPress={() => setPicked(null)} />
+        </View>
+        <View style={styles.wrap}>
+          {picked.portions.map((p, i) => (
+            <Chip key={p.label} label={p.label} active={portionIdx === i} onPress={() => setPortionIdx(i)} />
+          ))}
+          <Chip label={`Serbest ${picked.unit}`} active={portionIdx === -1} onPress={() => setPortionIdx(-1)} />
+        </View>
+        {portion ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.lg }}>
+            <IconButton icon="minus" label="Miktarı azalt" onPress={() => setQty((q) => Math.max(0.5, q - 0.5))} />
+            <View style={{ minWidth: 90, alignItems: 'center' }}>
+              <T variant="heading" style={{ fontSize: 22 }}>
+                {fmt1(qty)}
+              </T>
+              <T variant="caption" muted>
+                porsiyon · {Math.round(grams)} {picked.unit}
+              </T>
+            </View>
+            <IconButton icon="add" label="Miktarı artır" onPress={() => setQty((q) => Math.min(50, q + 0.5))} />
+          </View>
+        ) : (
+          <View style={{ gap: 3 }}>
+            <T variant="caption" secondary>
+              Miktar ({picked.unit})
+            </T>
+            <TextInput
+              value={gramText}
+              onChangeText={setGramText}
+              keyboardType="decimal-pad"
+              placeholder="100"
+              placeholderTextColor={t.textMuted}
+              accessibilityLabel={`Miktar, ${picked.unit}`}
+              style={[styles.input, { height: 42, backgroundColor: t.surfaceRaised, color: t.text }]}
+            />
+          </View>
+        )}
+        <View style={[styles.preview2, { backgroundColor: t.surfaceRaised }]}>
+          <T variant="numLarge" style={{ fontSize: 30, lineHeight: 36 }}>
+            {n.kcal} <T variant="label" secondary>kcal</T>
+          </T>
+          <T variant="label" secondary>
+            P {fmt1(n.protein)} g · K {fmt1(n.carbs)} g · Y {fmt1(n.fat)} g
+          </T>
+        </View>
+        <Button title="Öğüne ekle" icon="add" onPress={() => onAdd(picked, servingText(picked, portion, qty, grams), n)} disabled={saving || grams <= 0} loading={saving} />
+        <T variant="caption" muted>
+          Değerler yaklaşık değerdir; marka, pişirme ve tarife göre değişir.
+        </T>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={{ gap: Spacing.md }}>
+      <View style={[styles.searchBox, { backgroundColor: t.surfaceRaised }]}>
+        <Icon name="search" size={16} color={t.textMuted} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Ara: simit, köfte, çorba…"
+          placeholderTextColor={t.textMuted}
+          autoCorrect={false}
+          returnKeyType="search"
+          accessibilityLabel="Yiyecek ara"
+          style={{ flex: 1, color: t.text, fontSize: 15, fontFamily: Font.bold, height: 46 }}
+        />
+        {query.length > 0 && (
+          <PressableScale onPress={() => setQuery('')} hitSlop={10} accessibilityRole="button" accessibilityLabel="Aramayı temizle">
+            <Icon name="close" size={14} color={t.textMuted} />
+          </PressableScale>
+        )}
+      </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 8 }}>
+        {FOOD_CATEGORIES.map((c) => (
+          <Chip key={c.id} label={c.label} active={cat === c.id} onPress={() => setCat(cat === c.id ? null : c.id)} />
+        ))}
+      </ScrollView>
+      {!searching ? (
+        <T variant="caption" muted>
+          350+ Türk yemeği, içecek ve ürün. Bulamazsan aşağıdan elle ekleyebilir ya da fotoğraf/not ile tahmin alabilirsin.
+        </T>
+      ) : results.length === 0 ? (
+        <T variant="label" secondary>
+          Sonuç yok. Aşağıdaki hızlı ekle ile elle girebilir ya da yapay zekâ tahmini isteyebilirsin.
+        </T>
+      ) : (
+        <View>
+          {results.map((f, i) => (
+            <View key={f.id}>
+              <PressableScale onPress={() => pick(f)} scaleTo={0.99} style={styles.resultRow} accessibilityRole="button" accessibilityLabel={`${f.name}, seç`}>
+                <View style={{ flex: 1 }}>
+                  <T variant="label" numberOfLines={1}>
+                    {f.name}
+                  </T>
+                  <T variant="caption" secondary numberOfLines={1}>
+                    100 {f.unit}: {Math.round(f.kcal)} kcal · P {fmt1(f.protein)} K {fmt1(f.carbs)} Y {fmt1(f.fat)}
+                  </T>
+                </View>
+                <Icon name="chevronRight" size={12} color={t.textMuted} />
+              </PressableScale>
+              {i < results.length - 1 && <Divider />}
+            </View>
+          ))}
+        </View>
+      )}
+    </Card>
   );
 }
 
@@ -302,6 +460,9 @@ const styles = StyleSheet.create({
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   input: { height: 48, borderRadius: Radius.md, paddingHorizontal: Spacing.lg, fontSize: 15, fontFamily: Font.bold },
   foodRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: Spacing.md, borderRadius: Radius.md },
+  resultRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: Spacing.md },
+  preview2: { borderRadius: Radius.md, padding: Spacing.md, gap: 2, alignItems: 'center' },
   aiIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
   preview: { width: '100%', height: 200, borderRadius: Radius.md },
 });

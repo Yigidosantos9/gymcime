@@ -1,4 +1,4 @@
-import { suggestNext, adjustAfterSet, warmupsFor, type Session } from '@/lib/progression';
+import { suggestNext, adjustBodyweight, warmupsFor, type Session } from '@/lib/progression';
 const assert = (c: any, m: string) => { if (!c) throw new Error('FAIL: ' + m); console.log('ok -', m); };
 const NOW = 1_800_000_000_000, D = 86400000;
 const ses = (daysAgo: number, sets: [number, number, number?][], type = 'normal'): Session =>
@@ -16,18 +16,18 @@ s = suggestNext([ses(3, [[60, 12, 0], [60, 12, 0]])], 8, 12, 'Halter', opt);
 assert(s.kind === 'hold' && s.weight === 60, 'üst sınır ama tükendi → aynı ağırlık');
 
 s = suggestNext([ses(3, [[60, 9, 5], [60, 9, 4]])], 8, 12, 'Halter', opt);
-assert(s.kind === 'hold' && s.weight === 60 && s.reps === 11, `kolay ama +2,5 kg tahmini aşıyor → aynı ağırlık +2 tekrar (${s.weight}×${s.reps})`);
+assert(s.kind === 'increase' && s.weight === 65 && s.reps === 9, `Kolay → +2 adım, tekrar korunur (${s.weight}×${s.reps})`);
 s = suggestNext([ses(3, [[60, 12, 5], [60, 12, 5]])], 8, 12, 'Halter', opt);
-assert(s.kind === 'increase' && s.weight! > 60 && s.weight! <= 60 * 1.07, `çok kolay + üst sınır → artış ≤%7 (${s.weight})`);
+assert(s.kind === 'increase' && s.weight === 65 && s.reps === 8, `Kolay + üst sınır → +2 adım, tekrar alt sınıra (${s.weight}×${s.reps})`);
 s = suggestNext([ses(3, [[100, 10, 5], [100, 10, 5]])], 8, 12, 'Halter', opt);
-assert(s.kind === 'increase' && s.weight! > 100 && s.weight! <= 107, `çok kolay (100×10 @5) → e1RM'den artış ≤%7 (${s.weight}×${s.reps})`);
+assert(s.kind === 'increase' && s.weight === 105 && s.reps === 10, `Kolay 100×10 → 105 (${s.weight}×${s.reps})`);
 
 s = suggestNext([ses(3, [[60, 5], [60, 4]])], 8, 12, 'Halter', opt);
-assert(s.kind === 'decrease' && s.weight! < 60 && s.weight! >= 52.5, `hedef altı → düşür (${s.weight})`);
+assert(s.kind === 'decrease' && s.weight === 57.5 && s.reps === 8, `hedef 2+ altı (Tükendim) → −1 adım (${s.weight})`);
 assert(s.weight! % 2.5 === 0, 'adıma yuvarlı');
 
 s = suggestNext([ses(3, [[60, 9], [60, 8]])], 8, 12, 'Halter', opt);
-assert(s.kind === 'hold' && s.weight === 60 && s.reps === 9, 'aradaysa aynı ağırlık +1 tekrar');
+assert(s.kind === 'increase' && s.weight === 62.5 && s.reps === 8, `zorluk yok, hedef tutturuldu → İyi → +1 adım (${s.weight}×${s.reps})`);
 
 s = suggestNext([ses(20, [[60, 10]])], 8, 12, 'Halter', opt);
 assert(s.kind === 'return' && s.weight === 52.5, `20 gün ara → %10 hafif (${s.weight})`);
@@ -37,7 +37,7 @@ assert(s.kind === 'return' && s.weight === 50, `40 gün ara → %15 hafif (${s.w
 // plato: 4 seans aynı
 const flat = [ses(2, [[80, 6]]), ses(6, [[80, 6]]), ses(10, [[80, 6]]), ses(14, [[80, 6]])];
 s = suggestNext(flat, 6, 10, 'Halter', opt);
-assert(s.plateau && s.kind === 'deload' && s.weight === 70, `plato → deload (${s.kind} ${s.weight})`);
+assert(s.plateau && s.kind === 'increase' && s.weight === 82.5, `plato yalnızca bilgi: kural yine işler (${s.kind} ${s.weight})`);
 
 // ilerleyen sporcu plato değil
 const prog = [ses(2, [[85, 6]]), ses(6, [[82.5, 6]]), ses(10, [[80, 6]]), ses(14, [[77.5, 6]])];
@@ -68,19 +68,19 @@ assert(s.kind === 'start', 'sadece ısınma → start');
 s = suggestNext([ses(3, [[60, 10]])], 8, 12, 'Halter', { ...opt, goal: 'Formda kalmak' });
 assert(s.targetRir === 3, 'hedefe göre RIR');
 
-// küçük ağırlıkta adım > %7 olsa da en az bir adım
+// küçük dambıl ağırlığı
 s = suggestNext([ses(3, [[10, 10, 5], [10, 10, 5]])], 8, 12, 'Dambıl', opt);
-assert(s.weight === 10 && s.reps === 12, `küçük ağırlıkta adım %7'yi aşıyor → önce tekrar (${s.weight}×${s.reps})`);
+assert(s.weight === 14 && s.reps === 10, `Kolay dambıl → +2 adım (${s.weight}×${s.reps})`);
 s = suggestNext([ses(3, [[10, 12, 5], [10, 12, 5]])], 8, 12, 'Dambıl', opt);
-assert(s.weight === 12 && s.kind === 'increase', `üst sınıra ulaşınca dambıl +2 (${s.weight})`);
+assert(s.weight === 14 && s.kind === 'increase', `Kolay üst sınır dambıl (${s.weight})`);
 
-// seans içi ayar
-let a = adjustAfterSet({ weight: 60, reps: 10 }, { weight: 60, reps: 10, rir: 4 }, 2, 2.5);
-assert(a.weight === 62.5 && a.note, 'kolay set → +adım');
-a = adjustAfterSet({ weight: 60, reps: 10 }, { weight: 60, reps: 7, rir: 0 }, 2, 2.5, { repMin: 8, repMax: 12 });
-assert(a.weight! < 60 && a.weight! >= 52.5 && a.reps >= 8, `tükendi + hedef altı → hafifle (${a.weight}×${a.reps})`);
-a = adjustAfterSet({ weight: 60, reps: 10 }, { weight: 60, reps: 10, rir: null }, 2, 2.5);
-assert(a.weight === 60 && !a.note, 'zorluk girilmediyse değişmez');
+// vücut ağırlığı seans içi
+let b = adjustBodyweight(10, { reps: 10, rir: 4 });
+assert(b.reps === 11 && b.note?.startsWith('Kolay'), 'vücut ağırlığı seans içi Kolay → +1 tekrar');
+b = adjustBodyweight(10, { reps: 10, rir: 2 });
+assert(b.reps === 10 && b.note === null, 'vücut ağırlığı seans içi İyi → plan');
+b = adjustBodyweight(10, { reps: 8, rir: 0 });
+assert(b.reps === 7, 'vücut ağırlığı seans içi Tükendim → yapılan −1');
 assert(warmupsFor(30, 'Halter', 2.5).length === 0 && warmupsFor(100, 'Dambıl', 2).length === 0, 'hafif/izole hareketlerde ısınma yok');
 
 // NaN/Infinity koruması

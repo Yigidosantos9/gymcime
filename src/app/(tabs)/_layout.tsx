@@ -35,7 +35,8 @@ export default function TabsLayout() {
       blurEffect={t.isDark ? 'systemChromeMaterialDark' : 'systemChromeMaterialLight'}
       indicatorColor={t.primarySoft}
       rippleColor={t.primarySoft}
-      minimizeBehavior="onScrollDown">
+      minimizeBehavior="onScrollDown"
+      backBehavior="history">
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Bugün</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={home.sf} md={home.md} />

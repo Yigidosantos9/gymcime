@@ -6,7 +6,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MuscleIcon } from '@/components/body-map';
 import { Icon } from '@/components/icon';
 import { useSheet } from '@/components/sheet';
-import { Badge, Button, Card, EmptyState, IconButton, PressableScale, ScreenHeader, T } from '@/components/ui';
+import { HomeBack } from '@/components/tab-back';
+import { Badge, Button, Card, EmptyState, PressableScale, ScreenHeader, T } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { listRoutines } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
@@ -22,17 +23,14 @@ export default function Routines() {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: t.background }}>
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
-        <ScreenHeader
-          subtitle={routines ? `${routines.length} rutin` : undefined}
-          title="Rutinler"
-          right={<IconButton icon="add" onPress={() => router.push('/routine/new')} color={t.primary} bg={t.primarySoft} />}
-        />
+        <HomeBack />
+        <ScreenHeader subtitle={routines ? `${routines.length} rutin` : undefined} title="Rutinler" />
+
+        <Button title="Yeni rutin oluştur" icon="add" onPress={() => router.push('/routine/new')} style={{ marginBottom: Spacing.lg }} />
 
         {routines && routines.length === 0 && (
           <Card>
-            <EmptyState icon="routines" title="Henüz rutin yok" text="Sık yaptığın antrenmanları rutin olarak kaydet, tek dokunuşla başla.">
-              <Button title="Rutin oluştur" icon="add" onPress={() => router.push('/routine/new')} />
-            </EmptyState>
+            <EmptyState icon="routines" title="Henüz rutin yok" text={'Örneğin “Sırt günü” veya “Göğüs + Triceps” oluştur; ya da bitirdiğin bir antrenmanı özet ekranından rutin olarak kaydet.'} />
           </Card>
         )}
 

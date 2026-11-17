@@ -11,6 +11,7 @@ import { Button, Card, IconButton, PressableScale, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { deleteRoutine, getExercise, getProfile, getRoutine, saveRoutine, type RoutineItem } from '@/db/queries';
 import { useTheme } from '@/hooks/use-theme';
+import { isTimeBased } from '@/lib/cardio';
 import { haptic } from '@/lib/haptics';
 import { pickerStore } from '@/lib/picker-store';
 import { formatRest, REST_PRESETS } from '@/lib/rest';
@@ -59,6 +60,7 @@ export default function RoutineEditor() {
               rep_max: 12,
               rest_seconds: null,
               default_rest: e.rest_seconds,
+              kind: e.kind,
             });
           }
         }
@@ -169,7 +171,7 @@ export default function RoutineEditor() {
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="Rutin adı"
+          placeholder="Rutin adı (ör. Sırt günü, Göğüs + Triceps)"
           placeholderTextColor={t.textMuted}
           style={[styles.nameInput, { color: t.text }]}
         />
@@ -179,6 +181,7 @@ export default function RoutineEditor() {
 
         {items.map((it, idx) => {
           const rest = it.rest_seconds ?? it.default_rest ?? profileRest;
+          const timeBased = isTimeBased(it.kind);
           return (
             <Animated.View key={`${it.exercise_id}-${idx}`} entering={FadeInDown} layout={LinearTransition.springify().damping(20)}>
               <Card style={{ marginTop: Spacing.md }}>
@@ -198,9 +201,14 @@ export default function RoutineEditor() {
                 </View>
                 <View style={styles.steppers}>
                   <Stepper label="Set" value={it.target_sets} min={1} max={10} onChange={(v) => update(idx, { target_sets: v })} />
-                  <Stepper label="Min tekrar" value={it.rep_min} min={1} max={it.rep_max} onChange={(v) => update(idx, { rep_min: v })} />
-                  <Stepper label="Max tekrar" value={it.rep_max} min={it.rep_min} max={50} onChange={(v) => update(idx, { rep_max: v })} />
+                  {!timeBased && (
+                    <>
+                      <Stepper label="Min tekrar" value={it.rep_min} min={1} max={it.rep_max} onChange={(v) => update(idx, { rep_min: v })} />
+                      <Stepper label="Max tekrar" value={it.rep_max} min={it.rep_min} max={50} onChange={(v) => update(idx, { rep_max: v })} />
+                    </>
+                  )}
                 </View>
+                {it.kind !== 'cardio' && (
                 <PressableScale onPress={() => pickRest(idx)} style={[styles.restRow, { backgroundColor: t.surfaceRaised }]}>
                   <Icon name="timer" size={14} color={t.primary} />
                   <T variant="label" style={{ flex: 1 }}>
@@ -212,6 +220,7 @@ export default function RoutineEditor() {
                   </T>
                   <Icon name="chevronRight" size={12} color={t.textMuted} />
                 </PressableScale>
+                )}
               </Card>
             </Animated.View>
           );

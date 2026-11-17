@@ -1,17 +1,23 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
+import { useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown, ZoomIn } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BodyMap } from '@/components/body-map';
 import { Icon, type IconName } from '@/components/icon';
+import { askRoutineName } from '@/components/routine-name-sheet';
+import { useSheet } from '@/components/sheet';
 import { PressableScale, T } from '@/components/ui';
 import { Radius, Spacing } from '@/constants/theme';
-import { getWorkoutSummary } from '@/db/queries';
+import { cardioPrDetails, createRoutineFromWorkout, getWorkoutSummary } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDuration, formatMinutes, formatVolume, formatWeight } from '@/lib/format';
+import { formatDuration, formatMinutes, formatWeight } from '@/lib/format';
+import { haptic } from '@/lib/haptics';
+import { formatKm, formatMin } from '@/lib/cardio';
 import { formatRest } from '@/lib/rest';
 import { goHome } from '@/lib/nav';
 
@@ -20,7 +26,31 @@ const CHEERS = ['Harikaydın! 🌊', 'Dalga gibi geldin! 🌊', 'Bugün de kazan
 export default function Summary() {
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { data } = useDbQuery((db) => getWorkoutSummary(db, Number(id)), [id]);
+  const { data } = useDbQuery(async (db) => {
+    const s = await getWorkoutSummary(db, Number(id));
+    return s ? { ...s, cardioPrs: await cardioPrDetails(db, Number(id)) } : null;
+  }, [id]);
+  const db = useSQLiteContext();
+  const sheet = useSheet();
+  const [savedRoutine, setSavedRoutine] = useState<string | null>(null);
+
+  const saveAsRoutine = () => {
+    if (!data) return;
+    askRoutineName(sheet, {
+      title: 'Rutin olarak kaydet',
+      initial: data.name === 'Serbest Antrenman' ? '' : data.name,
+      onSubmit: async (name) => {
+        const rid = await createRoutineFromWorkout(db, data.workoutId, name);
+        if (rid == null) {
+          haptic.warning();
+          sheet.actions({ title: 'Rutin oluşturulamadı', message: 'Bu antrenmanda tamamlanmış çalışma seti yok.', actions: [], cancelLabel: 'Tamam' });
+          return;
+        }
+        haptic.success();
+        setSavedRoutine(name);
+      },
+    });
+  };
 
   if (!data) return <View style={{ flex: 1, backgroundColor: t.background }} />;
 
@@ -48,7 +78,7 @@ export default function Summary() {
           <Animated.View entering={FadeInDown.delay(200)} style={styles.statsRow}>
             <Box icon="clock" label="Süre" value={formatMinutes(data.durationMs)} />
             <Box icon="layers" label="Set" value={String(data.setCount)} />
-            <Box icon="barbell" label="Hacim" value={formatVolume(data.volume)} />
+            <Box icon="trophy" label="Rekor" value={String(data.prs.length)} />
           </Animated.View>
 
           {data.restAvgTaken != null && data.restAvgTarget != null && (
@@ -59,6 +89,19 @@ export default function Summary() {
                 <T variant="caption" secondary>
                   Hedefin {formatRest(data.restAvgTarget)}
                   {data.restAvgTaken > data.restAvgTarget + 30 ? ' · biraz uzun tuttun, bir sonrakinde sıkılaştır' : ' · disiplinliydin 👌'}
+                </T>
+              </View>
+            </Animated.View>
+          )}
+
+          {data.cardio.sets > 0 && (
+            <Animated.View entering={FadeInDown.delay(290)} style={[styles.panel, { backgroundColor: t.surface, borderColor: t.border }]}>
+              <Icon name="flame" size={18} color={t.primary} />
+              <View style={{ flex: 1 }}>
+                <T variant="heading">Kardiyo {formatMin(data.cardio.minutes)}</T>
+                <T variant="caption" secondary>
+                  {data.cardio.km > 0 ? `${formatKm(data.cardio.km * 1000)} km · ` : ''}
+                  {data.cardio.sets} set
                 </T>
               </View>
             </Animated.View>
@@ -78,9 +121,17 @@ export default function Summary() {
               <T variant="heading" color={t.gold}>
                 🏆 {data.prs.length} yeni kişisel rekor
               </T>
-              {data.prs.slice(0, 5).map((p, i) => (
-                <T key={i}>
-                  {p.name} — {formatWeight(p.weight)} kg × {p.reps}
+              {data.prs
+                .filter((p) => p.kind !== 'cardio' && p.kind !== 'timed')
+                .slice(0, 5)
+                .map((p, i) => (
+                  <T key={i}>
+                    {p.name} — {formatWeight(p.weight)} kg × {p.reps}
+                  </T>
+                ))}
+              {data.cardioPrs.map((p, i) => (
+                <T key={`c${i}`}>
+                  {p.name} — {p.texts.join(' · ')}
                 </T>
               ))}
             </Animated.View>
@@ -93,6 +144,21 @@ export default function Summary() {
               Harika, devam!
             </T>
           </PressableScale>
+          {savedRoutine ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14 }}>
+              <Icon name="check" size={16} color={t.success} />
+              <T variant="label" color={t.success}>
+                {`“${savedRoutine}” rutini kaydedildi`}
+              </T>
+            </View>
+          ) : (
+            <PressableScale onPress={saveAsRoutine} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14 }}>
+              <Icon name="routines" size={16} color={t.primary} />
+              <T variant="label" color={t.primary}>
+                Rutin olarak kaydet
+              </T>
+            </PressableScale>
+          )}
           <PressableScale onPress={() => {
               // Modalın yerine açmak yerine önce kapat, sonra normal sayfa olarak aç (geri tuşu olsun)
               goHome();

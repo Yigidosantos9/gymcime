@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Icon } from '@/components/icon';
 import { useSheet } from '@/components/sheet';
+import { HomeBack } from '@/components/tab-back';
 import { Card, Divider, IconButton, PressableScale, Ring, ScreenHeader, SectionHeader, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import {
@@ -126,6 +127,7 @@ export default function Nutrition() {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: t.background }}>
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+        <HomeBack />
         <ScreenHeader
           title="Beslenme"
           subtitle={`${DOW[new Date(dayKeyToTs(day)).getDay()]}`}

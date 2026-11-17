@@ -1,16 +1,13 @@
 /**
- * Akıllı ağırlık önerisi v2 — tamamen deterministik, telefonda anlık çalışır.
+ * Ağırlık önerisi v3 — kural tabanlı, deterministik, telefonda anlık çalışır.
  *
- * Girdi: bu egzersizin son birkaç seansı (ısınma hariç), her setin ağırlık/tekrar
- * ve varsa zorluk (RIR = kaç tekrar daha yapabilirdin) bilgisi.
+ * 1 adım = incrementFor(ekipman). Zorluk: Kolay = RIR ≥3, İyi = 2, Zor = 1, Tükendim = 0
+ * (seçilmediyse: hedef tekrar tutturuldu → İyi, 1 eksik → Zor, 2+ eksik → Tükendim).
  *
- * Mantık:
- *  1. Her seans için zorluğu hesaba katan tahmini 1RM (e1RM):  w × (1 + (tekrar + RIR) / 30)
- *  2. "Double progression": tüm setler aralığın üst sınırına ulaştıysa → ağırlık artar.
- *  3. RIR biliniyorsa: çok kolay geldiyse e1RM'den hedef ağırlık hesaplanır (en fazla +%7).
- *  4. Hedefin altında kalındıysa → e1RM'den güvenli ağırlık (−%5…−%12).
- *  5. Uzun ara (>14 gün) → %10–15 hafiflet. 3 seanstır ilerleme yoksa → plato / deload.
- *  6. Sonuç, ekipmanın artış adımına yuvarlanır. Ağır bileşik hareketlerde ısınma setleri önerilir.
+ *  - Sonraki antrenman (suggestNext), en ağır sete göre: Kolay +2 adım · İyi +1 adım ·
+ *    Zor aynı ağırlık +1 tekrar (üst sınırdaysa +1 adım) · Tükendim aynı ağırlık (hedefin 2+ altı: −1 adım).
+ *  - Seans içi (replanAfter): sonraki set = yapılan + piramit artışı; Kolay +1 adım · İyi plan · Zor artış iptal · Tükendim −1 adım.
+ *  - e1RM yalnızca bilgidir; plato yalnızca not (otomatik deload yok). >14 gün ara → hafiflet. Ağır halter için ısınma önerisi.
  */
 
 export type DoneSet = {
@@ -155,10 +152,50 @@ export function warmupsFor(weight: number | null, equipment: string, step: numbe
   return out;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Kural tabanlı öneri (sabit, ezberlenebilir kurallar — e1RM yalnızca bilgi)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type Effort = 'easy' | 'good' | 'hard' | 'fail';
+
+export const EFFORT_NAME: Record<Effort, string> = { easy: 'Kolay', good: 'İyi', hard: 'Zor', fail: 'Tükendim' };
+
+/** Kolay = RIR ≥3, İyi = 2, Zor = 1, Tükendim = 0. */
+export function effortFromRir(rir: number): Effort {
+  if (rir >= 3) return 'easy';
+  if (rir === 2) return 'good';
+  if (rir === 1) return 'hard';
+  return 'fail';
+}
+
+/** Zorluk seçilmediyse: hedef tutturuldu → İyi; 1 tekrar eksik → Zor; 2+ eksik → Tükendim. */
+export function inferEffort(reps: number, targetReps: number): Effort {
+  if (reps >= targetReps) return 'good';
+  if (reps === targetReps - 1) return 'hard';
+  return 'fail';
+}
+
+/** Kural tablosu (UI'daki "?" sheet'i ve testler aynı kaynağı kullanır). */
+export const RULE_TABLE: { effort: Effort; meaning: string; inSession: string; nextWorkout: string }[] = [
+  { effort: 'easy', meaning: '3+ tekrar yedekte', inSession: 'Sonraki set +1 adım', nextWorkout: '+2 adım' },
+  { effort: 'good', meaning: '2 tekrar yedekte', inSession: 'Plana devam', nextWorkout: '+1 adım' },
+  { effort: 'hard', meaning: '1 tekrar yedekte', inSession: 'Aynı ağırlık (piramit artışı iptal)', nextWorkout: 'Aynı ağırlık, +1 tekrar (üst sınırdaysa +1 adım)' },
+  { effort: 'fail', meaning: 'Tükendim', inSession: 'Sonraki set −1 adım', nextWorkout: 'Aynı ağırlık (hedefin 2+ altındaysa −1 adım). Vücut ağırlığında asla gerileme yok' },
+];
+
 const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, '')).replace('.', ',');
+const stepsText = (n: number) => `${n > 0 ? '+' : '−'}${Math.abs(n)} adım`;
+
+/** Bir setin zorluğu: açık RIR > tükeniş seti > RPE > tekrardan çıkarım. */
+function effortOfSet(s: DoneSet, targetReps: number): { effort: Effort; inferred: boolean } {
+  if (s.rir != null) return { effort: effortFromRir(s.rir), inferred: false };
+  if (s.set_type === 'failure') return { effort: 'fail', inferred: false };
+  if (s.rpe != null) return { effort: effortFromRir(Math.max(0, 10 - s.rpe)), inferred: false };
+  return { effort: inferEffort(s.reps ?? 0, targetReps), inferred: true };
+}
 
 /**
- * Bir sonraki seans için öneri.
+ * Bir sonraki seans için öneri — "en ağır (son) çalışma seti"nin zorluğuna göre sabit kurallar.
  * @param sessions en yeni seans başta olacak şekilde son seanslar (ısınma setleri dahil olabilir, yok sayılır)
  */
 export function suggestNext(
@@ -202,45 +239,43 @@ export function suggestNext(
   const last = valid[0];
   const lastSets = working(last.sets);
   const topWeight = Math.max(...lastSets.map((s) => s.weight ?? 0));
-  const topSets = lastSets.filter((s) => (s.weight ?? 0) === topWeight);
-  const minReps = Math.min(...topSets.map((s) => s.reps ?? 0));
-  // "Çok kolay" kararı için TÜM üst setlerin zorluğu bilinmeli (tükeniş seti vb. gözden kaçmasın)
-  const allRirKnown = topSets.every((s) => s.rir != null || s.set_type === 'failure');
-  const rirs = topSets.map((s) => rirOf(s, targetRir));
-  const avgRir = allRirKnown ? rirs.reduce((a, b) => a + b, 0) / rirs.length : null;
-  const minRir = Math.min(...rirs);
+  // En ağır set (eşitlikte sonuncusu) — kural bu sete göre işler
+  const top = [...lastSets].reverse().find((s) => (s.weight ?? 0) === topWeight)!;
+  const topReps = top.reps ?? 0;
 
-  // Ağırlıklı e1RM (son seans 0.5, önceki 0.3, ondan önceki 0.2)
+  // Bilgi amaçlı e1RM ve plato (öneriyi değiştirmez)
   const e1rms = valid.slice(0, 4).map((h) => sessionE1RM(h.sets, targetRir));
-  const w = [0.5, 0.3, 0.2];
+  const wts = [0.5, 0.3, 0.2];
   let num = 0;
   let den = 0;
   e1rms.slice(0, 3).forEach((v, i) => {
     if (v > 0) {
-      num += v * w[i];
-      den += w[i];
+      num += v * wts[i];
+      den += wts[i];
     }
   });
   const e1rm = den > 0 ? num / den : 0;
   base.e1rm = e1rm > 0 ? Math.round(e1rm * 10) / 10 : null;
-
-  // Plato: son 3 seansın hiçbiri, 4 seans önceki en iyiyi %0.5 geçemediyse
-  const plateau = e1rms.length >= 4 && Math.max(...e1rms.slice(0, 3)) <= e1rms[3] * 1.005;
-  base.plateau = plateau;
+  base.plateau = e1rms.length >= 4 && Math.max(...e1rms.slice(0, 3)) <= e1rms[3] * 1.005;
 
   const daysOff = (now - last.started_at) / 86400000;
+  const { effort, inferred } = effortOfSet(top, repMin);
+  const eff = `${EFFORT_NAME[effort]}${inferred ? ' (tahmini)' : ''}`;
+  const lead = `Son sefer en ağır set ${eff} geçti`;
 
-  // ── Vücut ağırlığı / ekipmansız: tekrarla ilerle
+  // ── Vücut ağırlığı / ekipmansız: tekrarla ilerle (Kolay +2 · İyi +1 · Zor aynı · Tükendim −1)
   if (step === 0 || topWeight === 0) {
     const bw = (reps: number, kind: SuggestKind, reason: string): Suggestion => ({ ...base, weight: topWeight || null, reps, kind, reason });
     if (daysOff > 14) {
-      const r = Math.max(1, Math.round(minReps * 0.85));
+      const r = Math.max(1, Math.round(topReps * 0.85));
       return bw(r, 'return', `${Math.round(daysOff)} gündür yapmadın → ${r} tekrarla yeniden başla`);
     }
-    if (minReps >= repMax) return bw(repMax + 1, 'increase', `Üst sınır (${repMax}) tamam → ${repMax + 1} tekrar dene ya da ağırlık ekle`);
-    const target = minReps + 1;
-    if (minReps < repMin) return bw(target, 'hold', `Hedef ${repMin} tekrar · bugün ${target} tekrara uzan`);
-    return bw(target, 'hold', `Geçen sefer en az ${minReps} tekrar → bugün ${target} hedefle`);
+    // Tükendim: yalnızca açıkça seçildiyse ve sonuç hedefin (alt sınır) altına düşmüyorsa −1; çıkarımla ise gerileme yok
+    const delta = effort === 'fail' ? (!inferred && topReps - 1 >= repMin ? -1 : 0) : { easy: 2, good: 1, hard: 0 }[effort];
+    const r = Math.max(1, topReps + delta);
+    const kind: SuggestKind = delta > 0 ? 'increase' : delta < 0 ? 'decrease' : 'hold';
+    const what = delta > 0 ? `+${delta} tekrar` : delta < 0 ? '−1 tekrar' : 'aynı tekrar';
+    return bw(r, kind, `${lead} → ${what} (${r})`);
   }
 
   const finish = (weight: number, reps: number, kind: SuggestKind, reason: string): Suggestion => {
@@ -259,111 +294,50 @@ export function suggestNext(
     );
   }
 
-  // ── Plato + son seans zorladıysa: deload
-  if (plateau && minReps <= repMin) {
-    return finish(floorTo(topWeight * 0.9, step), repMax, 'deload', '3 seanstır güç artmıyor → %10 hafif, yüksek tekrarlı bir seans (deload)');
-  }
+  const clampReps = (r: number) => Math.max(repMin, Math.min(repMax, r));
+  // Ağırlık artarken tekrar: yaptığın tekrar (üst sınırdaysa alt sınıra dön)
+  const repsAfterIncrease = topReps >= repMax ? repMin : clampReps(topReps);
+  const up = (steps: number): Suggestion => {
+    const w = topWeight + steps * step;
+    return finish(w, repsAfterIncrease, 'increase', `${lead} → ${stepsText(steps)} (${fmt(w)} kg)`);
+  };
 
-  // ── Hedefin altında kaldı
-  if (minReps < Math.max(1, repMin - 1) || (minReps < repMin && minRir <= 0)) {
-    const fromE1rm = weightFor(e1rm || effective1RM(topWeight, minReps, minRir), repMin, targetRir);
-    const clamped = Math.min(topWeight * 0.95, Math.max(topWeight * 0.88, fromE1rm));
-    return finish(floorTo(clamped, step), repMin, 'decrease', `Hedefin (${repMin}) altında kaldın → ${fmt(floorTo(clamped, step))} kg ile formu koru`);
+  switch (effort) {
+    case 'easy':
+      return up(2);
+    case 'good':
+      // Hedef tutturulmadıysa (zorluk girilmiş ama tekrar alt sınırın altında) önce tekrarı yakala
+      if (topReps < repMin) return finish(topWeight, topReps + 1, 'hold', `${lead} ama tekrar hedefinin (${repMin}) altında → aynı ağırlık, ${topReps + 1} tekrar`);
+      return up(1);
+    case 'hard':
+      if (topReps >= repMax) return up(1);
+      return finish(topWeight, topReps + 1, 'hold', `${lead} → aynı ağırlık, +1 tekrar (${fmt(topWeight)} kg × ${topReps + 1})`);
+    case 'fail':
+      if (topReps <= repMin - 2) {
+        const w = topWeight - step;
+        return finish(w, repMin, 'decrease', `${lead}, tekrar hedefinin (${repMin}) 2+ altında → −1 adım (${fmt(Math.max(step, w))} kg)`);
+      }
+      return finish(topWeight, clampReps(topReps), 'hold', `${lead} → aynı ağırlık (${fmt(topWeight)} kg × ${clampReps(topReps)})`);
   }
-
-  // ── Üst sınıra ulaştı: klasik artış
-  if (minReps >= repMax && minRir >= targetRir - 1) {
-    return finish(topWeight + step, repMin, 'increase', `Tüm setlerde üst sınır (${repMax}) tamam → +${fmt(step)} kg`);
-  }
-
-  // ── RIR biliniyor ve çok kolay geldi: e1RM'den hedef ağırlık (en fazla +%7)
-  // Zorluk seçenekleri en fazla RIR 4 → eşik 4'ü geçmesin (yoksa "Formda kalmak"ta hiç tetiklenmez)
-  if (avgRir != null && avgRir >= Math.min(targetRir + 2, 4) && minReps >= repMin) {
-    const midReps = Math.round((repMin + repMax) / 2);
-    const target = weightFor(effective1RM(topWeight, minReps, avgRir), midReps, targetRir);
-    const next = floorTo(Math.min(target, topWeight * 1.07), step);
-    if (next > topWeight) {
-      return finish(next, midReps, 'increase', `Geçen sefer kolay geldi (≈${Math.round(avgRir)} tekrar yedekte) → ${fmt(next)} kg × ${midReps}`);
-    }
-    // Artış adımı tahmini aşıyor (veya %7 sınırını): ağırlığı koru, tekrarı artır
-    const r = Math.min(repMax, minReps + 2);
-    return finish(topWeight, r, 'hold', `Kolay geldi ama bir sonraki adım (+${fmt(step)} kg) erken → aynı ağırlıkla ${r} tekrar`);
-  }
-
-  // ── Üst sınıra ulaştı ama zorlandı: aynı ağırlıkta pekiştir
-  if (minReps >= repMax) {
-    return finish(topWeight, repMax, 'hold', `Üst sınıra ulaştın ama zorlandın → aynı ağırlıkla ${repMax} tekrarı rahatlat`);
-  }
-
-  // ── Aynı ağırlık, +1 tekrar
-  const target = Math.min(repMax, minReps + 1);
-  return finish(
-    topWeight,
-    target,
-    'hold',
-    plateau ? `Plato sinyali: ${target} tekrarı hedefle, olmazsa deload düşün` : `Aynı ağırlık, ${target} tekrarı hedefle`,
-  );
 }
 
 /**
- * Seans içi ayar: tamamlanan çalışma setinin ağırlık/tekrar/zorluk (RIR) bilgisinden
- * bir sonraki set için ağırlık ve tekrar önerir.
- *
- *  - Kolay (RIR ≥3): güç tahmininden hedef ağırlık; en az bir adım, en fazla iki adım artış.
- *  - İyi (RIR 2 = hedef): aynı ağırlık ve tekrar.
- *  - Zor / Tükendim (RIR ≤1): yorgunluk payıyla (%2) yeniden hesap; tekrar hedef aralıkta
- *    kalıyorsa ağırlığı koru ve tekrarı düşür, kalmıyorsa ağırlığı düşür (en fazla %12).
- *  - Zorluk girilmediyse ve hedef tekrarın 2+ altında kalındıysa "tükendi" kabul edilir.
+ * Vücut ağırlığı / ekipmansız hareketlerde seans içi ayar: sonraki setin tekrarı.
+ * Kolay → plan+1 · İyi → plan · Zor → yapılan tekrar (en çok plan kadar) · Tükendim → yapılan −1 (zorluk çıkarımla Tükendim ise gerileme yok).
  */
-export function adjustAfterSet(
-  planned: { weight: number | null; reps: number },
-  done: { weight: number | null; reps: number | null; rir: number | null },
-  targetRir: number,
-  step: number,
-  range: { repMin: number; repMax: number } = { repMin: 1, repMax: 30 },
-): { weight: number | null; reps: number; note: string | null } {
+export function adjustBodyweight(
+  plannedReps: number,
+  done: { reps: number | null; rir: number | null; failure?: boolean },
+): { reps: number; note: string | null } {
   const reps = done.reps ?? 0;
-  const missed = reps > 0 && reps < planned.reps - 1;
-  const rir = done.rir ?? (missed ? 0 : null);
-  const label = effortLabel(rir) ?? 'Zor';
-  const w = done.weight ?? planned.weight;
-  const clampReps = (r: number) => Math.max(Math.max(1, range.repMin - 2), Math.min(range.repMax, r));
-
-  if (rir == null || reps <= 0) return { weight: w, reps: planned.reps, note: null };
-
-  // Vücut ağırlığı / ekipmansız: sadece tekrar
-  if (!w || step === 0) {
-    const delta = Math.max(-2, Math.min(2, rir - targetRir));
-    const r = Math.max(1, reps + delta);
-    return { weight: w, reps: r, note: delta === 0 ? null : `${label} → sonraki set ${r} tekrar` };
-  }
-
-  // Hedefteyse aynen devam
-  if (rir === targetRir && !missed) return { weight: w, reps: planned.reps, note: null };
-
-  const fatigue = rir >= 2 ? 1 : 0.98;
-  const e1 = effective1RM(w, reps, rir) * fatigue;
-  const target = Math.max(range.repMin, Math.min(range.repMax, planned.reps));
-  const ideal = weightFor(e1, target, targetRir);
-  const repsAt = (wt: number) => Math.floor(30 * (e1 / wt - 1) - targetRir + 1e-9);
-
-  if (ideal >= w + step) {
-    const nw = Math.min(floorTo(ideal, step), w + 2 * step);
-    return { weight: nw, reps: target, note: `${label} → sonraki set ${fmt(nw)} kg × ${target}` };
-  }
-  if (ideal < w) {
-    const r = repsAt(w);
-    if (r >= range.repMin) {
-      const rr = clampReps(Math.min(r, target));
-      return { weight: w, reps: rr, note: rr === planned.reps ? null : `${label} → aynı ağırlık, ${rr} tekrar` };
-    }
-    const nw = Math.max(step, Math.min(w - step, Math.max(roundTo(ideal, step), floorTo(w * 0.88, step))));
-    const rr = clampReps(Math.min(target, Math.max(range.repMin, repsAt(nw))));
-    return { weight: nw, reps: rr, note: `${label} → sonraki set ${fmt(nw)} kg × ${rr}` };
-  }
-  // ideal, mevcut ağırlıkla bir adım yukarısı arasında: ağırlığı koru, tekrarı ayarla
-  const rr = clampReps(Math.max(target, Math.min(range.repMax, repsAt(w))));
-  return { weight: w, reps: rr, note: rr === planned.reps ? null : `${label} → aynı ağırlık, ${rr} tekrar` };
+  if (reps <= 0) return { reps: plannedReps, note: null };
+  const { effort, inferred } = done.rir != null ? { effort: effortFromRir(done.rir), inferred: false } : done.failure ? { effort: 'fail' as Effort, inferred: false } : { effort: inferEffort(reps, plannedReps), inferred: true };
+  // Açık Tükendim: yorgunluk için −1; çıkarımla Tükendim: gerileme yok
+  const r = Math.max(
+    1,
+    effort === 'easy' ? plannedReps + 1 : effort === 'good' ? plannedReps : effort === 'hard' || inferred ? Math.min(plannedReps, reps) : Math.min(plannedReps, reps) - 1,
+  );
+  return { reps: r, note: r === plannedReps ? null : `${EFFORT_NAME[effort]}${inferred ? ' (tahmini)' : ''} → sonraki set ${r} tekrar` };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -446,49 +420,42 @@ export function planSets(
 }
 
 /**
- * Tamamlanan bir çalışma setinden sonra kalan setleri yeniden planla.
- * Zorluk (RIR) girildiyse ya da ağırlık/tekrar plandan saptıysa güç tahmini güncellenir;
- * kalan setler bu tahmin ve set başına %1 yorgunluk payıyla, plana göre −%12…+2 adım aralığında ayarlanır.
+ * Seans içi kural: tamamlanan çalışma setinden sonra kalan setleri yeniden planla.
+ *   taban = yapılan ağırlık + planlanan piramit artışı (plan[n+1] − plan[n], ≥ 0; sabitte 0)
+ *   Kolay → taban + 1 adım · İyi → taban · Zor → yapılan ağırlık · Tükendim → yapılan − 1 adım
+ * Sonraki setlerin hepsi yeni ağırlığa göre plandaki farkları korur (zincir). Tekrar hedefi plandaki gibi kalır.
+ * Zorluk seçilmediyse: planlanan tekrar tutturuldu → İyi; 1 eksik → Zor; 2+ eksik → Tükendim.
  */
 export function replanAfter(
   plan: SetPlan[],
   doneIndex: number,
-  done: { weight: number | null; reps: number | null; rir: number | null },
+  done: { weight: number | null; reps: number | null; rir: number | null; failure?: boolean },
   step: number,
-  opts: { style?: 'ramp' | 'straight'; repMin?: number } = {},
 ): { plan: SetPlan[]; note: string | null } {
   const p = plan[doneIndex];
+  const nextSet = plan[doneIndex + 1];
   const reps = done.reps ?? 0;
   const w = done.weight ?? p?.weight ?? null;
-  if (!p || !w || reps <= 0 || step === 0) return { plan, note: null };
-  const asPlanned = done.rir == null && reps >= p.reps && w === p.weight;
-  if (asPlanned) return { plan, note: null };
-  const missed = reps < p.reps - 1;
-  const rir = done.rir ?? (missed ? 0 : p.rir);
-  const e1 = effective1RM(w, reps, rir);
+  if (!p || !nextSet || !w || reps <= 0 || step === 0) return { plan, note: null };
+  const inferred = done.rir == null && !done.failure;
+  const effort: Effort = done.rir != null ? effortFromRir(done.rir) : done.failure ? 'fail' : inferEffort(reps, p.reps);
+  const rise = Math.max(0, (nextSet.weight ?? 0) - (p.weight ?? 0));
+  const taban = w + rise;
+  const nextWeight = Math.max(
+    step,
+    effort === 'easy' ? taban + step : effort === 'good' ? taban : effort === 'hard' ? w : w - step,
+  );
   const next = plan.map((x) => ({ ...x }));
-  for (let j = doneIndex + 1; j < next.length; j++) {
-    const base = plan[j].weight ?? w;
-    const ideal = weightFor(e1 * Math.pow(0.99, j - doneIndex), next[j].reps, next[j].rir);
-    const lo = floorTo(base * 0.88, step);
-    const hi = base + 2 * step;
-    next[j].weight = Math.max(step, Math.min(hi, Math.max(lo, roundTo(ideal, step))));
-    // Piramit: setler hafiflemesin → ağırlığı yapılan sette tut, tekrarı tahmine göre azalt.
-    // Tekrar hedef aralığın 2'den fazla altına düşecekse ağırlığı düşürmeye izin ver.
-    if (opts.style === 'ramp' && next[j].weight! < w) {
-      const repsAtW = Math.floor(30 * ((e1 * Math.pow(0.99, j - doneIndex)) / w - 1) - next[j].rir + 1e-9);
-      const floorReps = Math.max(1, (opts.repMin ?? 1) - 2);
-      if (repsAtW >= floorReps) {
-        next[j].weight = w;
-        next[j].reps = Math.min(next[j].reps, repsAtW);
-      }
-    }
+  next[doneIndex + 1].weight = nextWeight;
+  for (let j = doneIndex + 2; j < next.length; j++) {
+    const diff = Math.max(0, (plan[j].weight ?? 0) - (plan[j - 1].weight ?? 0));
+    next[j].weight = Math.max(step, (next[j - 1].weight ?? 0) + diff);
   }
-  const n = next[doneIndex + 1];
-  const changed = n && (n.weight !== plan[doneIndex + 1].weight || n.reps !== plan[doneIndex + 1].reps);
-  const label = done.rir != null ? effortLabel(done.rir)! : missed ? 'Tekrar kaçtı' : 'Set farklı';
+  const changed = nextWeight !== nextSet.weight;
+  const why =
+    effort === 'easy' ? '+1 adım' : effort === 'good' ? 'plana devam' : effort === 'hard' ? (rise > 0 ? 'piramit artışı iptal' : 'aynı ağırlık') : '−1 adım';
   return {
     plan: next,
-    note: changed ? `${label} → Set ${doneIndex + 2}: ${fmt(n.weight!)} kg × ${n.reps}` : null,
+    note: changed ? `${EFFORT_NAME[effort]}${inferred ? ' (tahmini)' : ''} → Set ${doneIndex + 2}: ${fmt(nextWeight)} kg × ${nextSet.reps} (${why})` : null,
   };
 }

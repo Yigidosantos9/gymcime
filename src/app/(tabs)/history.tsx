@@ -5,12 +5,14 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icon';
+import { formatMin } from '@/lib/cardio';
+import { HomeBack } from '@/components/tab-back';
 import { Badge, Card, EmptyState, PressableScale, ScreenHeader, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { listWorkouts, type WorkoutListItem } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
-import { formatMinutes, formatVolume, startOfDay } from '@/lib/format';
+import { formatMinutes, startOfDay } from '@/lib/format';
 
 const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const DOW = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
@@ -19,18 +21,18 @@ export default function History() {
   const t = useTheme();
   const { data } = useDbQuery((db) => listWorkouts(db, 500));
 
-  const sections: { title: string; count: number; volume: number; data: WorkoutListItem[] }[] = [];
+  const sections: { title: string; count: number; sets: number; data: WorkoutListItem[] }[] = [];
   for (const w of data ?? []) {
     const d = new Date(w.started_at);
     const title = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
     let s = sections[sections.length - 1];
     if (!s || s.title !== title) {
-      s = { title, count: 0, volume: 0, data: [] };
+      s = { title, count: 0, sets: 0, data: [] };
       sections.push(s);
     }
     s.data.push(w);
     s.count++;
-    s.volume += w.volume;
+    s.sets += w.set_count;
   }
 
   return (
@@ -43,6 +45,7 @@ export default function History() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <>
+            <HomeBack />
             <ScreenHeader title="Geçmiş" subtitle={data ? `${data.length} antrenman` : undefined} />
             <Heatmap starts={(data ?? []).map((w) => w.started_at)} />
           </>
@@ -60,7 +63,7 @@ export default function History() {
               {section.title}
             </T>
             <T variant="caption" muted>
-              {section.count} antrenman · {formatVolume(section.volume)}
+              {section.count} antrenman · {section.sets} set
             </T>
           </View>
         )}
@@ -92,7 +95,8 @@ export default function History() {
                       <View style={styles.meta}>
                         <Meta icon="clock" text={formatMinutes((item.finished_at ?? item.started_at) - item.started_at)} />
                         <Meta icon="layers" text={`${item.set_count} set`} />
-                        <Meta icon="barbell" text={formatVolume(item.volume)} />
+                        {item.cardio_sec > 0 && <Meta icon="timer" text={`Kardiyo ${formatMin(item.cardio_sec / 60)}`} />}
+                        <Meta icon="barbell" text={`${item.exercise_names ? item.exercise_names.split(' · ').length : 0} egzersiz`} />
                       </View>
                     </View>
                   </View>

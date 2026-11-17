@@ -14,11 +14,6 @@ export function parseNumber(text: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function formatVolume(kg: number) {
-  if (kg >= 10000) return `${(kg / 1000).toFixed(1).replace('.', ',')} t`;
-  return `${Math.round(kg).toLocaleString('tr-TR')} kg`;
-}
-
 export function formatDuration(ms: number) {
   const totalSec = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(totalSec / 3600);

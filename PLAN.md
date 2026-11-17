@@ -271,6 +271,32 @@ Kullanıcı isteği: haftanın günlerine rutin ata, takvimde görünsün. (Gör
 > Ana sayfa: plan şeridi (✓ yapıldı, soluk/kesikli = kaçırıldı, bugün vurgulu, "Bu hafta plan: x/y"), hero "Bugün: <rutin>" / "Bugün dinlenme günü 🌊" + "Yine de başla". Geçmiş: aylık takvim (`workoutsBetween`, rutine göre renk, planlı günler soluk, gün sheet'i). Hatırlatıcı: plan varsa yalnızca rutin atanmış günlerde "Bugün: <rutin> 💪"; plan/rutin/ayar/yedek değişince `syncReminders`.
 > Testler: `tests/week-plan.test.ts`. Kısıtlar: plan "rutin atanmış gün = antrenman günü", rutinsiz not-satırı dinlenme sayılır; takvimde bir günde birden çok antrenman varsa ilkinin adı/rengi gösterilir (köşe noktası). Simülatörde ana sayfa şeridi ve takvim görüldü; plan ekranı etkileşimleri cihazda denenmeli.
 
+## Görev 2.11 — Rutinde tekrar eden egzersiz uyarısı + geçmişe antrenman ekleme  `[ ]`
+1. **Tekrar eden egzersiz (engelleme yok, uyarı var — kullanıcı kararı):** egzersiz seçicide, rutin/antrenmanda zaten olan hareketlerin
+   satırında "Rutinde var" / "Antrenmanda var" etiketi; yine de seçilirse sheet: "<ad> zaten var — Yine de ekle / Vazgeç".
+   Aynı egzersizin iki kopyası olduğunda öneri motoru, "önceki" sütunu ve PR hesabı bozulmasın (test).
+2. **Geçmişe antrenman ekleme:** Geçmiş sekmesinde "Geçmişe antrenman ekle" butonu; aylık takvimde güne dokununca "Bu güne antrenman ekle".
+   Akış: tarih (bugün dahil, gelecek yok) + başlangıç saati + süre + rutin seç veya boş → antrenman `finished_at` dolu olarak oluşturulur →
+   mevcut geçmiş düzenleme (session "Düzenle" modu) ile setler girilir; rutinden oluşturulduysa setler rutinin set sayısıyla boş gelir,
+   boş kalan setler `finalizeHistoryEdit` ile temizlenir. Kaydedince: o egzersizlerin PR bayrakları TARİH SIRASINA göre yeniden hesaplanır
+   (geçmişe eklenen set sonraki antrenmanların rekorlarını etkileyebilir), toparlanma/plan uyumu/öneriler/hatırlatıcılar güncel veriyi kullanır.
+   Aynı güne ikinci antrenman eklenebilir. Testler: tarih sırasına göre PR yeniden hesabı, gelecek tarih reddi, boş set temizliği, plan uyumu.
+
+## Görev 2.12 — Dil desteği: Türkçe / English  `[ ]`
+- **Altyapı (ek kütüphane gerekmeden):** `src/i18n/tr.ts` (kaynak) + `src/i18n/en.ts`, tip güvenli anahtarlar (en.ts tr'nin tüm anahtarlarını
+  içermek zorunda — TypeScript ile), parametreli metinler ve Türkçe/İngilizce çoğul kuralları; `LanguageProvider` + `useT()` hook'u
+  (ThemeProvider kalıbı gibi, tercih `settings.language` = 'system' | 'tr' | 'en'; sistem dili için `expo-localization` — `npx expo install`).
+- **Ayarlar → Dil** (Türkçe / English / Sistem) ve onboarding'in ilk ekranında dil seçimi. Değişince uygulama anında yeniden çizilsin.
+- **Kapsam:** TÜM arayüz metinleri (sekme adları, başlıklar, butonlar, sheet'ler, boş durumlar, hata mesajları, kural tablosu, AI hata metinleri),
+  bildirimler (mola + hatırlatıcılar; dil değişince hatırlatıcılar yeniden kurulsun), tarih/gün/ay adları ve göreli tarihler (Bugün/Dün),
+  sayı biçimi (TR: 62,5 · EN: 62.5; giriş her iki ayırıcıyı da kabul etmeye devam eder), kas grupları / ekipman / set tipleri / zorluk adları
+  (DB'de Türkçe anahtar olarak KALIR; yalnızca gösterim çevrilir), seed rutin adları gösterimi.
+- **İçerik:** egzersiz adımları iki dilde — İngilizce asıl metin git geçmişinden geri alınabilir (`git show b3a2f1c:src/db/exercise-media.ts`);
+  `exercise-media.ts` her egzersiz için `steps: { tr, en }`. Yemek veritabanı: kategori adları çevrilir; yiyeceklere İngilizce ad (`nameEn`)
+  eklenir ve arama her iki dilde çalışır. AI istekleri (rehber, yemek tahmini) seçili dilde yanıt istesin; rehber önbelleği dile göre ayrı tutulsun.
+- **Testler:** tr/en anahtar eşliği; `src/app` ve `src/components` içinde i18n dışında Türkçe karakterli sabit metin kalmadığını doğrulayan
+  sezgisel test (izin listesiyle); yerel ayara göre sayı/tarih biçimlendirme; dil değişince hatırlatıcı yeniden kurulumu (saf kısım).
+
 ## Görev Havuzu (öncelik sırası; kullanıcı onayıyla seçilecek)
 - **Barkod okuma** (expo-camera; Open Food Facts ücretsiz API — kullanıcı verisi göndermeden ürün sorgusu) → beslenmeye hızlı ekleme.
 - **Su takibi** (Beslenme'de günlük bardak/ml hedefi).

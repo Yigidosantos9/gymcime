@@ -12,7 +12,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#030F17",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -28,9 +28,25 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#030F17",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 76,
+          "dark": {
+            "backgroundColor": "#030F17",
+            "image": "./assets/images/splash-icon.png"
+          }
+        }
+      ],
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-notifications",
+      "expo-audio",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Yemek fotoğrafından kalori tahmini için fotoğraf seçmene izin ver.",
+          "cameraPermission": "Yemeğinin fotoğrafını çekip kalori tahmini yapabilmek için kameraya izin ver.",
+          "microphonePermission": false
         }
       ]
     ],

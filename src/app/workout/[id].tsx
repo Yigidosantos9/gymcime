@@ -14,6 +14,7 @@ import { Font, Radius, Spacing } from '@/constants/theme';
 import {
   addSet,
   addWarmupSets,
+  setSetNote,
   setSetRir,
   deleteSet,
   discardWorkout,
@@ -204,7 +205,7 @@ export default function WorkoutScreen() {
     <View style={{ flex: 1, backgroundColor: t.background }}>
       {/* Üst bar */}
       <View style={[styles.topBar, { paddingTop: insets.top + 6 }]}>
-        <IconButton icon="chevronDown" onPress={leave} />
+        <IconButton icon="chevronDown" label="Antrenmanı küçült" onPress={leave} />
         <View style={{ flex: 1, alignItems: 'center' }}>
           <T variant="heading" numberOfLines={1}>
             {workout.name}
@@ -219,7 +220,7 @@ export default function WorkoutScreen() {
             </T>
           </View>
         </View>
-        <PressableScale onPress={onFinish} style={[styles.finishBtn, { backgroundColor: t.success }]}>
+        <PressableScale onPress={onFinish} accessibilityLabel="Antrenmanı bitir" style={[styles.finishBtn, { backgroundColor: t.success }]}>
           <T variant="label" color={t.onPrimary} style={{ fontFamily: Font.bold }}>
             Bitir
           </T>
@@ -379,7 +380,7 @@ function EffortPanel({
             {exName} · sonraki setin önerisi buna göre ayarlanır
           </T>
         </View>
-        <PressableScale onPress={onClose} hitSlop={12} style={styles.effortClose}>
+        <PressableScale onPress={onClose} hitSlop={12} accessibilityLabel="Kapat" style={styles.effortClose}>
           <Icon name="close" size={13} color={t.textMuted} />
         </PressableScale>
       </View>
@@ -504,7 +505,7 @@ function ExerciseBlock({
             {ex.muscle} · {ex.rep_min}-{ex.rep_max} tekrar
           </T>
         </PressableScale>
-        <PressableScale onPress={openRest} style={[styles.restChip, { backgroundColor: t.primarySoft }]}>
+        <PressableScale onPress={openRest} accessibilityLabel="Dinlenme süresini değiştir" style={[styles.restChip, { backgroundColor: t.primarySoft }]}>
           <Icon name="timer" size={12} color={t.primary} />
           <T variant="caption" color={t.primary} style={{ fontFamily: Font.bold }}>
             {formatRest(rest)}
@@ -610,6 +611,7 @@ function ExerciseBlock({
           await addSet(db, ex.id);
           onChanged();
         }}
+        accessibilityLabel="Set ekle"
         style={[styles.addSet, { backgroundColor: t.surfaceRaised }]}>
         <Icon name="add" size={13} color={t.textSecondary} />
         <T variant="label" secondary>
@@ -637,7 +639,18 @@ function warmupPlaceholder(working: number | null, equipment: string, step: numb
  * Seans içi ayar: her tamamlanan çalışma setinden sonra kalan setlerin
  * yer tutucu (önerilen) ağırlığı güncellenir. Saf fonksiyon.
  */
+const planCache = new WeakMap<WorkoutExerciseFull, { step: number; result: ReturnType<typeof computePlanRows> }>();
+
+/** Aynı egzersiz verisi + adım için plan bir kez hesaplanır (ex her yüklemede yeni nesne olur → önbellek kendiliğinden tazelenir). */
 function planRows(ex: WorkoutExerciseFull, step: number) {
+  const hit = planCache.get(ex);
+  if (hit && hit.step === step) return hit.result;
+  const result = computePlanRows(ex, step);
+  planCache.set(ex, { step, result });
+  return result;
+}
+
+function computePlanRows(ex: WorkoutExerciseFull, step: number) {
   const sug = ex.suggestion;
   const prevSets = ex.previous;
   // Çalışma setleri (ısınma ve drop hariç) için set set plan: piramitte hafiften ağıra
@@ -723,6 +736,26 @@ function RestPicker({ current, onPick }: { current: number; onPick: (secs: numbe
 
 // ───────────────────────── Set satırı ─────────────────────────
 
+function SetNoteEditor({ initial, onSave }: { initial: string; onSave: (text: string) => void | Promise<void> }) {
+  const t = useTheme();
+  const [text, setText] = useState(initial);
+  return (
+    <View style={{ gap: Spacing.md }}>
+      <TextInput
+        value={text}
+        onChangeText={setText}
+        maxLength={140}
+        autoFocus
+        placeholder="Ör. omuz hafif sızladı, tempo yavaş"
+        placeholderTextColor={t.textMuted}
+        accessibilityLabel="Set notu"
+        style={[styles.input, { height: 48, paddingHorizontal: Spacing.md, fontFamily: Font.medium, fontSize: 15, textAlign: 'left', backgroundColor: t.surfaceRaised, color: t.text }]}
+      />
+      <Button title="Kaydet" icon="check" onPress={() => onSave(text)} />
+    </View>
+  );
+}
+
 function SetRow({
   label,
   set,
@@ -790,7 +823,28 @@ function SetRow({
           await setSetType(db, set.id, st.key as SetType);
           onChanged();
         },
-      })),
+      })).concat([
+        {
+          label: set.note ? 'Notu düzenle' : 'Not ekle',
+          style: 'default' as const,
+          onPress: async () => openNote(),
+        },
+      ]),
+    });
+
+  const openNote = () =>
+    sheet.custom({
+      title: 'Set notu',
+      render: (close) => (
+        <SetNoteEditor
+          initial={set.note ?? ''}
+          onSave={async (text) => {
+            await setSetNote(db, set.id, text);
+            await close();
+            onChanged();
+          }}
+        />
+      ),
     });
 
   const effortFg = set.rir == null ? t.textMuted : set.rir >= 3 ? t.success : set.rir === 2 ? t.primary : set.rir === 1 ? t.gold : t.danger;
@@ -836,13 +890,13 @@ function SetRow({
       rightThreshold={60}
       overshootRight={false}
       renderRightActions={() => (
-        <PressableScale onPress={remove} style={[styles.swipeDelete, { backgroundColor: t.danger }]}>
+        <PressableScale onPress={remove} accessibilityLabel="Seti sil" style={[styles.swipeDelete, { backgroundColor: t.danger }]}>
           <Icon name="trash" size={18} color="#fff" />
         </PressableScale>
       )}>
       <Animated.View layout={LinearTransition.springify().damping(20)} style={[styles.setRow, { backgroundColor: t.surface }]}>
         {done && <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: t.successSoft, borderRadius: Radius.sm }]} />}
-        <PressableScale onPress={openType} style={styles.colSet} scaleTo={0.85}>
+        <PressableScale onPress={openType} accessibilityLabel={`Set tipini değiştir, set ${short || label}`} style={styles.colSet} scaleTo={0.85}>
           <View style={[styles.setBadge, { backgroundColor: done && type === 'normal' ? t.success : typeBg }]}>
             {set.is_pr ? (
               <T style={{ fontSize: 13 }}>🏆</T>
@@ -854,7 +908,7 @@ function SetRow({
           </View>
         </PressableScale>
         {done && type !== 'warmup' ? (
-          <PressableScale onPress={openEffort} style={styles.colPrev} scaleTo={0.9} hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}>
+          <PressableScale onPress={openEffort} accessibilityLabel={set.rir != null ? `Zorluk: ${effortLabel(set.rir)}. Değiştir` : 'Zorluğu seç'} style={styles.colPrev} scaleTo={0.9} hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}>
             <View style={[styles.effort, { backgroundColor: set.rir != null ? effortBg : 'transparent', borderColor: set.rir != null ? 'transparent' : t.borderStrong }]}>
               <T variant="caption" color={set.rir != null ? effortFg : t.textMuted} style={{ fontFamily: Font.bold, fontSize: 11 }}>
                 {effortLabel(set.rir) ?? 'Zorluk?'}
@@ -888,12 +942,20 @@ function SetRow({
           editable={!done}
           style={[styles.input, styles.colInput, { backgroundColor: done ? 'transparent' : t.surfaceRaised, color: t.text }]}
         />
-        <PressableScale onPress={toggle} style={styles.colCheck} hapticOnPress={false} scaleTo={0.82}>
+        <PressableScale onPress={toggle} accessibilityLabel={done ? 'Seti geri al' : 'Seti tamamla'} accessibilityState={{ checked: done }} style={styles.colCheck} hapticOnPress={false} scaleTo={0.82}>
           <View style={[styles.check, { backgroundColor: done ? t.success : t.surfaceRaised, borderColor: done ? t.success : t.borderStrong }]}>
             <Icon name="check" size={17} color={done ? t.onPrimary : t.textMuted} weight="bold" />
           </View>
         </PressableScale>
       </Animated.View>
+      {!!set.note && (
+        <View style={[styles.restNote, { backgroundColor: t.surface }]}>
+          <Icon name="edit" size={10} color={t.textMuted} />
+          <T variant="caption" muted style={{ fontSize: 11 }} numberOfLines={1}>
+            {set.note}
+          </T>
+        </View>
+      )}
       {done && set.rest_taken != null && set.rest_target != null && (
         <View style={[styles.restNote, { backgroundColor: t.surface }]}>
           <Icon name="timer" size={10} color={set.rest_taken > set.rest_target + 30 ? t.gold : t.textMuted} />

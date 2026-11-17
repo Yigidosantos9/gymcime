@@ -2,15 +2,45 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { SEED_EXERCISES } from './seed';
 
-const DB_VERSION = 5;
+/** Güncel şema sürümü (PRAGMA user_version). Yedek dosyaları da bu sürümü taşır. */
+export const DB_VERSION = 6;
 
 /** Ağır bileşik hareketler: varsayılan 3 dk dinlenme. */
 const HEAVY = ['squat', 'front-squat', 'deadlift', 'bench', 'incline-bench', 'ohp', 'rdl', 'bb-row', 'hip-thrust', 'hack-squat', 'leg-press', 'pullup', 'dips', 'cgbp'];
 /** İzolasyon hareketleri: varsayılan 75 sn. */
 const ISOLATION = ['db-fly', 'cable-fly', 'pec-deck', 'lateral', 'cable-lateral', 'front-raise', 'rear-delt', 'face-pull', 'bb-curl', 'db-curl', 'hammer', 'incline-curl', 'preacher', 'cable-curl', 'pushdown', 'rope-pushdown', 'oh-ext', 'kickback', 'leg-ext', 'leg-curl', 'calf-raise', 'abductor', 'cable-kickback', 'crunch', 'cable-crunch', 'russian-twist', 'straight-pulldown', 'shrug'];
 
+/** Hem veritabanı hem (yedek içe aktarırken) `Transaction` nesnesi bu arayüzü karşılar. */
+export type Queryable = Pick<SQLiteDatabase, 'runAsync' | 'getAllAsync' | 'getFirstAsync' | 'execAsync'>;
+
+const marks = (list: string[]) => list.map(() => '?').join(',');
+
+/** Seed egzersizlerinin dinlenme süresini varsayılanlara döndürür (özel egzersizlere dokunmaz). Transaction açmaz. */
+export async function applyDefaultRest(db: Queryable) {
+  await db.runAsync('UPDATE exercises SET rest_seconds = NULL WHERE is_custom = 0');
+  await db.runAsync(`UPDATE exercises SET rest_seconds = 180 WHERE is_custom = 0 AND slug IN (${marks(HEAVY)})`, ...HEAVY);
+  await db.runAsync(`UPDATE exercises SET rest_seconds = 75 WHERE is_custom = 0 AND slug IN (${marks(ISOLATION)})`, ...ISOLATION);
+}
+
+/** v3: İngilizce seed adları + Türkçe takma adlar (özel egzersizlere dokunmaz). Transaction açmaz. */
+export async function applySeedNames(db: Queryable) {
+  for (const [slug, name, alias] of SEED_EXERCISES) {
+    await db.runAsync('UPDATE exercises SET name = ?, alias = ? WHERE slug = ? AND is_custom = 0', name, alias, slug);
+  }
+}
+
+/**
+ * Eski şemalı (`fromVersion`) bir yedekten gelen VERİYE, o sürümden sonraki migrasyonların
+ * veri adımlarını uygular. Şema (sütun) değişiklikleri zaten güncel şemada mevcuttur. Transaction açmaz.
+ */
+export async function applyDataMigrations(db: Queryable, fromVersion: number) {
+  if (fromVersion < 2) await applyDefaultRest(db);
+  if (fromVersion < 3) await applySeedNames(db);
+  // v4-v6: yalnızca yeni tablo/sütun; veri adımı yok
+}
+
 /** Yarıda kalmış bir migrasyon tekrar çalışırsa "duplicate column" hatası vermesin. */
-async function addColumn(db: SQLiteDatabase, table: string, column: string, type: string) {
+async function addColumn(db: Queryable, table: string, column: string, type: string) {
   const cols = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${table})`);
   if (cols.some((c) => c.name === column)) return;
   await db.execAsync(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
@@ -120,9 +150,7 @@ export async function migrateDb(db: SQLiteDatabase) {
     await addColumn(db, 'sets', 'set_type', "TEXT NOT NULL DEFAULT 'normal'");
     await addColumn(db, 'sets', 'rest_target', 'INTEGER');
     await addColumn(db, 'sets', 'rest_taken', 'INTEGER');
-    const q = (list: string[]) => list.map(() => '?').join(',');
-    await db.runAsync(`UPDATE exercises SET rest_seconds = 180 WHERE slug IN (${q(HEAVY)})`, ...HEAVY);
-    await db.runAsync(`UPDATE exercises SET rest_seconds = 75 WHERE slug IN (${q(ISOLATION)})`, ...ISOLATION);
+    await applyDefaultRest(db);
     version = 2;
     await setVersion(db, version);
   }
@@ -132,9 +160,7 @@ export async function migrateDb(db: SQLiteDatabase) {
     await addColumn(db, 'exercises', 'alias', 'TEXT');
     await addColumn(db, 'sets', 'rir', 'INTEGER');
     await db.withTransactionAsync(async () => {
-      for (const [slug, name, alias] of SEED_EXERCISES) {
-        await db.runAsync('UPDATE exercises SET name = ?, alias = ? WHERE slug = ? AND is_custom = 0', name, alias, slug);
-      }
+      await applySeedNames(db);
     });
     version = 3;
     await setVersion(db, version);
@@ -189,6 +215,13 @@ export async function migrateDb(db: SQLiteDatabase) {
       CREATE INDEX IF NOT EXISTS idx_food_logs_day ON food_logs(day);
     `);
     version = 5;
+    await setVersion(db, version);
+  }
+
+  if (version < 6) {
+    // Set notu (geçmiş antrenmanı düzenleme + antrenman ekranı). Antrenman notu `workouts.note` v1'den beri var.
+    await addColumn(db, 'sets', 'note', 'TEXT');
+    version = 6;
     await setVersion(db, version);
   }
 }

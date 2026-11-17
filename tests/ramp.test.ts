@@ -1,0 +1,40 @@
+import { detectStyle, rirSchedule, learnedReps, planSets, replanAfter, suggestNext, type Session } from '@/lib/progression';
+const assert = (c: any, m: string) => { if (!c) throw new Error('FAIL: ' + m); console.log('ok -', m); };
+const NOW = 1_800_000_000_000, D = 86400000;
+const s = (d: number, sets: [number, number][]): Session => ({ started_at: NOW - d * D, sets: sets.map(([weight, reps]) => ({ weight, reps, set_type: 'normal' })) });
+const hist = [s(3, [[50, 10], [55, 10], [60, 8]]), s(7, [[50, 10], [55, 9], [57.5, 8]]), s(11, [[47.5, 10], [52.5, 10], [57.5, 7]])];
+assert(detectStyle(hist) === 'ramp', 'artan düzen algılandı');
+assert(detectStyle([s(3, [[60, 10], [60, 10], [60, 9]])]) === 'straight', 'sabit düzen algılandı');
+assert(detectStyle([]) === null, 'veri yok → null');
+assert(rirSchedule(3, 2, 'ramp').join() === '4,2,1' && rirSchedule(4, 2, 'ramp').join() === '4,3,2,1' && rirSchedule(3, 2, 'straight').join() === '2,2,2', `RIR takvimi ${rirSchedule(3, 2, 'ramp')}`);
+const lr = learnedReps(hist, 3);
+assert(lr.join() === '10,10,8', `öğrenilen tekrarlar ${lr}`);
+const sug = suggestNext(hist, 8, 12, 'Halter', { now: NOW });
+assert(sug.weight === 60, `en ağır set önerisi ${sug.weight}×${sug.reps} (${sug.kind})`);
+const plan = planSets({ weight: sug.weight, reps: sug.reps }, 3, 'ramp', 2, 2.5, lr);
+console.log('   plan:', plan.map((p) => `${p.weight}×${p.reps}@${p.rir}`).join('  '));
+assert(plan[0].weight! < plan[1].weight! && plan[1].weight! < plan[2].weight! && plan[2].weight === 60, 'piramit: artan ağırlıklar, son set en ağır');
+assert(plan[0].weight! >= 50 && plan[0].weight! <= 57.5, 'ilk set ısınma gibi hafif ama makul');
+const straight = planSets({ weight: 60, reps: 10 }, 3, 'straight', 2, 2.5);
+assert(straight.every((p) => p.weight === 60 && p.reps === 10), 'sabit düzende hepsi aynı');
+// canlı yeniden plan
+let r = replanAfter(plan, 0, { weight: plan[0].weight, reps: plan[0].reps, rir: null }, 2.5);
+assert(r.note === null && r.plan[1].weight === plan[1].weight, 'planlandığı gibi → değişiklik yok');
+r = replanAfter(plan, 0, { weight: plan[0].weight, reps: plan[0].reps, rir: 1 }, 2.5);
+assert(r.plan[1].weight! < plan[1].weight! && r.note?.startsWith('Zor'), `1. set zor → 2. set hafifler (${r.note})`);
+r = replanAfter(plan, 1, { weight: plan[1].weight, reps: plan[1].reps + 2, rir: 4 }, 2.5);
+assert(r.plan[2].weight! > plan[2].weight! && r.plan[2].weight! <= plan[2].weight! + 5, `2. set çok kolay → 3. set ağırlaşır, en fazla 2 adım (${r.note})`);
+r = replanAfter(plan, 1, { weight: plan[1].weight, reps: plan[1].reps - 3, rir: null }, 2.5);
+assert(r.plan[2].weight! < plan[2].weight!, `2. sette tekrar kaçtı → 3. set hafifler (${r.note})`);
+r = replanAfter(plan, 2, { weight: 60, reps: 9, rir: 0 }, 2.5);
+assert(r.plan === plan || r.note === null, 'son set → sonraki yok');
+const bw = planSets({ weight: null, reps: 10 }, 3, 'ramp', 2, 0, [12, 11]);
+assert(bw.every((p) => p.weight === null) && bw[0].reps === 12, 'vücut ağırlığı planı');
+// piramitte setler hafiflemez: 1. set zor → 2. set aynı ağırlık, daha az tekrar
+r = replanAfter(plan, 0, { weight: plan[0].weight, reps: plan[0].reps, rir: 1 }, 2.5, { style: 'ramp', repMin: 8 });
+assert(r.plan[1].weight === plan[0].weight && r.plan[1].reps < plan[1].reps && r.plan[1].reps >= 6, `piramit zor → ${r.note}`);
+assert(r.plan[2].weight! >= r.plan[1].weight!, 'piramit sırası korunur');
+// çok kötü set (tekrar çok kaçtı) → ağırlık düşebilir
+r = replanAfter(plan, 0, { weight: plan[0].weight, reps: 4, rir: 0 }, 2.5, { style: 'ramp', repMin: 8 });
+assert(r.plan[1].weight! < plan[0].weight!, `çok kaçan set → hafifleme izni (${r.note})`);
+console.log('PİRAMİT TESTLERİ GEÇTİ');

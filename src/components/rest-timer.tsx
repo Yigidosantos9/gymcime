@@ -63,6 +63,13 @@ export function RestTimerProvider({ children }: { children: ReactNode }) {
   const notifId = useRef<string | null>(null);
   /** start/adjust/stop her çağrıldığında artar; async iş bittiğinde hâlâ güncel mi diye bakılır */
   const generation = useRef(0);
+  /** updateNext güncel durumu kapanıştan değil ref'ten okur (bağımlılık değişip tekrar çağrılmasın) */
+  const restRef = useRef<RestState>(null);
+  const prefsRef = useRef<Prefs>({ soundOn: true, hapticOn: true });
+  useEffect(() => {
+    restRef.current = rest;
+    prefsRef.current = prefs;
+  }, [rest, prefs]);
 
   const cancelNotif = useCallback(async () => {
     const id = notifId.current;
@@ -134,9 +141,18 @@ export function RestTimerProvider({ children }: { children: ReactNode }) {
     [rest, scheduleNotif, prefs.soundOn],
   );
 
-  const updateNext = useCallback((next?: string) => {
-    setRest((r) => (r && r.next !== next ? { ...r, next } : r));
-  }, []);
+  const updateNext = useCallback(
+    (next?: string) => {
+      const r = restRef.current;
+      if (!r || r.next === next) return;
+      // metin değişti: bildirim gövdesi de güncellensin (eski bildirimi iptal edip yeniden planla)
+      restRef.current = { ...r, next };
+      setRest(restRef.current);
+      const gen = ++generation.current;
+      scheduleNotif(gen, r.endsAt, next, prefsRef.current.soundOn);
+    },
+    [scheduleNotif],
+  );
 
   const stop = useCallback(() => {
     generation.current++;

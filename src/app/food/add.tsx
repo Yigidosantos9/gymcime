@@ -30,6 +30,7 @@ export default function AddFood() {
   const day = params.day ?? today;
   const [meal, setMeal] = useState<Meal>((MEALS as readonly string[]).includes(params.meal ?? '') ? (params.meal as Meal) : defaultMeal(new Date().getHours()));
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<Row>({ name: '', kcal: '', protein: '', carbs: '', fat: '', portion: '' });
   const { data, reload } = useDbQuery(async (db) => ({ fav: await favoriteFoods(db), recent: await recentFoods(db), key: await hasApiKey() }));
 
@@ -40,12 +41,15 @@ export default function AddFood() {
   const guarded = async (fn: () => Promise<void>) => {
     if (saving) return;
     setSaving(true);
+    setError(null);
     try {
       await fn();
       haptic.success();
       leave();
-    } catch {
+    } catch (e) {
       setSaving(false);
+      haptic.warning();
+      setError(`Kaydedilemedi: ${e instanceof Error && e.message ? e.message : 'bilinmeyen hata'}. Tekrar dene.`);
     }
   };
 
@@ -64,6 +68,13 @@ export default function AddFood() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 80 }} keyboardShouldPersistTaps="handled">
+        {error && (
+          <View style={{ backgroundColor: t.dangerSoft, borderRadius: 12, padding: Spacing.md, marginBottom: Spacing.md }} accessibilityRole="alert">
+            <T variant="label" color={t.danger}>
+              {error}
+            </T>
+          </View>
+        )}
         <View style={styles.wrap}>
           {MEALS.map((m) => (
             <Chip key={m} label={m} active={meal === m} onPress={() => setMeal(m)} />

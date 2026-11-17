@@ -48,7 +48,8 @@
           "cameraPermission": "Yemeğinin fotoğrafını çekip kalori tahmini yapabilmek için kameraya izin ver.",
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -10,6 +10,8 @@ import { Button, Card, Chip, PressableScale, SectionHeader, T } from '@/componen
 import { Font, Radius, Spacing, type ThemePreference } from '@/constants/theme';
 import { clearApiKey, getModelPref, hasApiKey, saveModelPref, setApiKey, testConnection, type ModelPref } from '@/lib/ai';
 import { AiError } from '@/lib/ai-core';
+import { backupCounts, importBackup, BackupError } from '@/db/backup';
+import { pickBackup, shareBackup } from '@/lib/backup-io';
 import { deleteAllData, getProfile, saveProfile, type Profile } from '@/db/queries';
 import { useTheme } from '@/hooks/use-theme';
 import { dayWarning, notRecommended, WEEK_DAYS } from '@/lib/goals';
@@ -204,11 +206,94 @@ export default function Settings() {
 
       <AiSettings />
 
+      <DataSettings />
+
       <Button title="Tüm verileri sil" kind="danger" icon="trash" onPress={reset} style={{ marginTop: Spacing.xxl }} />
       <T variant="caption" muted style={{ textAlign: 'center', marginTop: Spacing.md }}>
         gymcime · verilerin yalnızca bu cihazda saklanır
       </T>
     </ScrollView>
+  );
+}
+
+function DataSettings() {
+  const db = useSQLiteContext();
+  const sheet = useSheet();
+  const t = useTheme();
+  const [busy, setBusy] = useState<'export' | 'import' | null>(null);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const fail = (e: unknown) => {
+    haptic.warning();
+    setMsg({ ok: false, text: e instanceof BackupError ? e.userMessage : `İşlem başarısız: ${e instanceof Error ? e.message : 'bilinmeyen hata'}` });
+  };
+
+  const doExport = async () => {
+    if (busy) return;
+    setBusy('export');
+    setMsg(null);
+    try {
+      await shareBackup(db);
+      setMsg({ ok: true, text: 'Yedek hazırlandı. Paylaşım sayfasından Dosyalar\'a kaydedebilirsin.' });
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doImport = async () => {
+    if (busy) return;
+    setBusy('import');
+    setMsg(null);
+    try {
+      const backup = await pickBackup();
+      if (!backup) return;
+      const c = backupCounts(backup);
+      const when = backup.exportedAt ? new Date(backup.exportedAt).toLocaleDateString('tr-TR', { dateStyle: 'long' }) : 'bilinmeyen tarih';
+      sheet.actions({
+        title: 'Yedek geri yüklensin mi?',
+        message: `${when} tarihli yedek: ${c.workouts} antrenman, ${c.sets} set, ${c.routines} rutin, ${c.foodLogs} öğün kaydı, ${c.bodyWeights} kilo ölçümü. Şu anki TÜM verilerin silinip yerine bunlar yazılır; geri alınamaz.`,
+        actions: [
+          {
+            label: 'Mevcut verinin yerine yükle',
+            icon: 'restart',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await importBackup(db, backup);
+                haptic.success();
+                goHome();
+              } catch (e) {
+                fail(e);
+              }
+            },
+          },
+        ],
+      });
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <>
+      <SectionHeader title="Veri" />
+      <Card style={{ gap: Spacing.md }}>
+        <T variant="caption" muted>
+          Tüm antrenman, rutin, beslenme ve kilo verini tek bir JSON dosyasına yedekle; telefon değiştirirsen ya da silersen geri yükle. API anahtarı yedeğe dahil edilmez.
+        </T>
+        <Button title="Yedeği dışa aktar" icon="arrowUp" kind="secondary" onPress={doExport} loading={busy === 'export'} disabled={busy != null} />
+        <Button title="Yedekten geri yükle" icon="restart" kind="ghost" onPress={doImport} loading={busy === 'import'} disabled={busy != null} />
+        {msg && (
+          <T variant="label" color={msg.ok ? t.success : t.danger}>
+            {msg.text}
+          </T>
+        )}
+      </Card>
+    </>
   );
 }
 

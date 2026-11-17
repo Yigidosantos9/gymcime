@@ -8,7 +8,7 @@ import { MuscleIcon } from '@/components/body-map';
 import { Icon } from '@/components/icon';
 import { Button, Chip, IconButton, PressableScale, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
-import { addExercisesToWorkout, createExercise, listExercises } from '@/db/queries';
+import { addExercisesToWorkout, addHistoryExercise, createExercise, listExercises } from '@/db/queries';
 import { EQUIPMENT, MUSCLES } from '@/db/seed';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
@@ -23,7 +23,7 @@ const normalize = (s: string) =>
 export default function ExercisePicker() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
-  const { workoutId } = useLocalSearchParams<{ workoutId?: string }>();
+  const { workoutId, historyWorkoutId } = useLocalSearchParams<{ workoutId?: string; historyWorkoutId?: string }>();
   const { data: exercises, db, reload } = useDbQuery(listExercises);
   const [q, setQ] = useState('');
   const [muscle, setMuscle] = useState<string | null>(null);
@@ -44,7 +44,9 @@ export default function ExercisePicker() {
 
   const confirm = async () => {
     if (selected.length === 0) return;
-    if (workoutId) await addExercisesToWorkout(db, Number(workoutId), selected);
+    if (historyWorkoutId) {
+      for (const exId of selected) await addHistoryExercise(db, Number(historyWorkoutId), exId);
+    } else if (workoutId) await addExercisesToWorkout(db, Number(workoutId), selected);
     else pickerStore.deliver(selected);
     haptic.success();
     leave();

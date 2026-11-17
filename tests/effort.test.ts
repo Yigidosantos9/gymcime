@@ -1,0 +1,18 @@
+import { adjustAfterSet } from '@/lib/progression';
+const assert = (c: any, m: string) => { if (!c) throw new Error('FAIL: ' + m); console.log('ok -', m); };
+const R = { repMin: 8, repMax: 12 };
+const run = (rir: number | null, reps = 10, w = 60, planned = 10, rng = R, step = 2.5) => adjustAfterSet({ weight: w, reps: planned }, { weight: w, reps, rir }, 2, step, rng);
+let a = run(4); assert(a.weight === 62.5 && a.reps === 10 && a.note?.startsWith('Kolay'), `Kolay → 62,5×10 (${a.weight}×${a.reps})`);
+a = run(2); assert(a.weight === 60 && a.reps === 10 && a.note === null, 'İyi → aynı');
+a = run(1); assert(a.weight === 60 && a.reps >= 8 && a.reps < 10 && a.note?.startsWith('Zor'), `Zor → aynı ağırlık, daha az tekrar (${a.weight}×${a.reps})`);
+a = run(0); assert(a.weight! < 60 && a.weight! >= 52.5 && a.reps >= 8, `Tükendim → hafifle (${a.weight}×${a.reps})`);
+a = run(0, 10, 60, 10, { repMin: 6, repMax: 10 }); assert(a.weight === 60 && a.reps === 7, `Tükendim ama aralık 6-10 → 60×7 (${a.weight}×${a.reps})`);
+a = run(null, 6); assert(a.weight! < 60, `zorluk yok, hedefin çok altı → tükendi say (${a.weight}×${a.reps})`);
+a = run(null, 10); assert(a.weight === 60 && a.note === null, 'zorluk yok → değişiklik yok');
+a = run(4, 12, 60, 12); assert(a.weight === 62.5 && a.reps === 12, `Kolay 60×12 → 62,5×12 (${a.weight}×${a.reps})`);
+a = run(4, 10, 100, 10, R, 2.5); assert(a.weight! >= 102.5 && a.weight! <= 105, `Kolay ağır → en fazla 2 adım (${a.weight})`);
+a = adjustAfterSet({ weight: null, reps: 10 }, { weight: null, reps: 10, rir: 4 }, 2, 0, R); assert(a.reps === 12, 'vücut ağırlığı Kolay → +2 tekrar');
+a = adjustAfterSet({ weight: null, reps: 10 }, { weight: null, reps: 8, rir: 0 }, 2, 0, R); assert(a.reps === 6, 'vücut ağırlığı Tükendim → -2 tekrar');
+a = run(1, 10, 10, 10, R, 2); assert(a.weight! >= 2 && Number.isFinite(a.weight!), 'küçük ağırlık güvenli');
+a = adjustAfterSet({ weight: null, reps: 10 }, { weight: null, reps: 10, rir: 3 }, 3, 0, R); assert(a.reps === 10 && a.note === null, 'vücut ağırlığı hedefte (Formda kalmak) → aynı');
+console.log('ZORLUK TESTLERİ GEÇTİ');

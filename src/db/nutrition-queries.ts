@@ -115,19 +115,25 @@ export async function addFoodLogs(db: SQLiteDatabase, items: NewFoodLog[], now =
 /** Transaction'sız iç yardımcı (iç içe transaction açmamak için dışarıdan çağırma). */
 async function insertFoodLog(db: SQLiteDatabase, f: NewFoodLog, now: number) {
   const name = f.name.trim();
-  await db.runAsync(
-    `INSERT INTO foods (name, kcal, protein, carbs, fat, serving, use_count, last_used) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
-     ON CONFLICT(name) DO UPDATE SET kcal = excluded.kcal, protein = excluded.protein, carbs = excluded.carbs, fat = excluded.fat,
-       serving = excluded.serving, use_count = use_count + 1, last_used = excluded.last_used`,
-    name,
-    f.kcal,
-    f.protein,
-    f.carbs,
-    f.fat,
-    f.serving ?? null,
-    now,
-  );
-  const food = await db.getFirstAsync<{ id: number }>('SELECT id FROM foods WHERE name = ?', name);
+  const source = f.source ?? 'manual';
+  let foodId: number | null = null;
+  // AI tahminleri "sık yenenler"e girmez (yalnızca food_logs'a yazılır)
+  if (source !== 'ai') {
+    // çakışmada kayıtlı makrolar KORUNUR; yalnızca kullanım sayacı/zamanı güncellenir
+    await db.runAsync(
+      `INSERT INTO foods (name, kcal, protein, carbs, fat, serving, use_count, last_used) VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+       ON CONFLICT(name) DO UPDATE SET use_count = use_count + 1, last_used = excluded.last_used`,
+      name,
+      f.kcal,
+      f.protein,
+      f.carbs,
+      f.fat,
+      f.serving ?? null,
+      now,
+    );
+    const food = await db.getFirstAsync<{ id: number }>('SELECT id FROM foods WHERE name = ?', name);
+    foodId = food?.id ?? null;
+  }
   const res = await db.runAsync(
     `INSERT INTO food_logs (day, meal, name, kcal, protein, carbs, fat, serving, food_id, source, note, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -139,8 +145,8 @@ async function insertFoodLog(db: SQLiteDatabase, f: NewFoodLog, now: number) {
     f.carbs,
     f.fat,
     f.serving ?? null,
-    food?.id ?? null,
-    f.source ?? 'manual',
+    foodId,
+    source,
     f.note ?? null,
     now,
   );

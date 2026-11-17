@@ -17,7 +17,7 @@ Her görev bitince kutucuğunu `[x]` yap ve altına 1-2 satırlık not düş.
 - Doğrulama zorunlu: `npx tsc --noEmit`, `npx expo lint`, node:sqlite ile mantık testleri (`$CLAUDE_JOB_DIR/tmp/dbtest` altında, esbuild ile `--alias:@=src`), simülatör ekran görüntüleri.
 - Kullanıcı paralel çalışan, salt-okunur bir **kontrolcü agent** istiyor: her görevin sonunda bir general-purpose agent başlat
   (dosya düzenlemesin, 8081'e dokunmasın), bulgularını doğrula ve düzelt.
-- Commit/push yapma (kullanıcı istemedi). API'ye ücretli istek atma (kullanıcı onayı yok).
+- Alt agent'lar commit/push YAPMAZ; commit + `git push` (origin: github.com/Yigidosantos9/gymcime, private) ana oturumun işidir. API'ye ücretli istek atma (kullanıcı onayı yok).
 - **API anahtarı asla koda, dosyaya, loga veya teste yazılmaz.** Anahtar yalnızca kullanıcının telefonda Ayarlar → Yapay zeka
   ekranından girdiği değerdir (`expo-secure-store`). Sohbet geçmişinde bir anahtar görürsen KULLANMA.
 - **Model seçimi (kullanıcı kararı — kademeli):**
@@ -29,6 +29,36 @@ Her görev bitince kutucuğunu `[x]` yap ve altına 1-2 satırlık not düş.
     sabit sistem talimatları prompt caching ile önbelleğe alınır.
 
 ---
+
+## Görev 0 — Temel: hata düzeltmeleri, kalıcı testler, yedekleme, geçmişi düzenleme  `[x]`
+Kontrolcü denetiminde (17 Kasım) bulunan hatalar ve temel eksikler.
+1. **Hatalar:**
+   - PR/1RM tutarsızlığı: `src/db/queries.ts` (~506, SQL `w*(1+reps/30)`) ile `src/lib/progression.ts` `estimate1RM` (reps==1 → weight)
+     aynı Epley kuralına getirilsin (tek kaynak; SQL'de `CASE WHEN reps = 1 THEN weight ELSE ... END`). Test: geçmiş 100×1, bugün 103×1 → rekor.
+   - `src/db/nutrition-queries.ts` `addFoodLog` (~100): `foods` çakışmasında kayıtlı makroları EZMESİN; yalnızca `use_count`/`last_used`
+     güncellensin. `source:'ai'` kalemleri `foods` (sık yenenler) tablosuna yazılmasın (sadece food_logs).
+   - `src/hooks/use-db-query.ts`: eski `reload()` sonucunun yeniyi ezmesini engelle (istek sürüm sayacı; yalnızca son isteğin sonucu setData).
+   - `src/app/food/add.tsx` `guarded()` (~47): hata yutulmasın; kullanıcıya sheet/inline hata mesajı göster.
+   - `getWorkoutSummary` (~590): `setCount` ve hacim ısınma setlerini HARİÇ tutsun (kas dağılımıyla tutarlı); özet ekranında gerekirse "ısınma hariç" notu.
+   - `deleteAllData` (~761): tek transaction; `exercises.rest_seconds` seed varsayılanlarına dönsün (özel egzersizler silinir).
+   - `addSet('warmup')` (~404) iki sorguyu transaction'a al. `rest-timer.tsx`: `updateNext` metni değişince bildirimi yeniden planla (generation kurallarına uy).
+   - Performans: `getWorkoutDetail` içindeki egzersiz başına `recentSessions` (N+1) → tek toplu sorgu; `planRows` sonucunu ekran başına bir kez hesapla (memo).
+   - Erişilebilirlik: `IconButton`, `PressableScale` ile yapılan ikon butonları ve set onay/zorluk butonlarına `accessibilityRole="button"` + Türkçe `accessibilityLabel`.
+2. **Kalıcı testler:** `$CLAUDE_JOB_DIR/tmp/dbtest/*.ts` içeriğini (ve gerekirse eksikleri) repoya `tests/` altına taşı (node:sqlite + esbuild;
+   `tests/run.sh` ya da `scripts/test.mjs`), `package.json`'a `"test"` script'i ekle; `npm test` tek komutla hepsini çalıştırsın ve
+   hata varsa sıfır olmayan çıkış kodu versin. Test dosyaları `tsc`/lint'i bozmasın (gerekirse tsconfig `exclude`).
+3. **Veri yedekleme/geri yükleme** (Ayarlar → "Veri"): tüm tabloları (API anahtarı HARİÇ) sürümlü JSON'a dışa aktar
+   (`expo-file-system` + `expo-sharing` ile paylaş/Dosyalar'a kaydet; `npx expo install`), içe aktar (`expo-document-picker`):
+   şema sürümü kontrolü, onay sheet'i, tek transaction, mevcut veriyi değiştirme. Test: dışa→sil→içe = aynı veri.
+4. **Geçmiş antrenmanı düzenleme** (`src/app/session/[id].tsx`): set ağırlık/tekrar/tip/zorluk düzenleme, set ekleme/silme, egzersiz ekleme/
+   çıkarma, başlık ve not; antrenman notu alanı (DB migrasyonu gerekirse v6). Düzenleme sonrası PR bayrakları o egzersiz için yeniden hesaplanır.
+   Set notu (kısa metin) — antrenman ekranında da opsiyonel.
+
+> **Not (Görev 0 tamamlandı):** Tüm maddeler uygulandı. `npm test` (`scripts/test.mjs`, esbuild devDependency) `tests/*.test.ts` dosyalarını çalıştırır (13 dosya; yeni: `task0.test.ts`, `helpers.ts`);
+> tsconfig/eslint `tests` ve `scripts` klasörlerini hariç tutar. DB v6 = `sets.note`; antrenman notu `workouts.note` zaten vardı. 1RM için tek SQL kaynağı `e1rmSql()` (queries.ts).
+> Yedek: `src/db/backup.ts` (saf mantık, test edilir) + `src/lib/backup-io.ts` (expo-file-system/sharing/document-picker); Ayarlar → Veri. Geçmiş düzenleme: `session/[id].tsx` "Düzenle" modu + `editHistorySet`/`recomputePrFlags`.
+> Eksik: simülatörde tıklama aracı olmadığı için yalnızca açılış/görüntüleme modu doğrulandı (v6 migrasyonu, oturum ekranı). Düzenle modu, Ayarlar → Veri'nin dışa/içe aktarımı (paylaşım sayfası, belge seçici) ve set notu sheet'i cihazda elle denenmeli.
+> Kontrolcü agent başlatılmadı (görev talimatında yoktu).
 
 ## Görev 1 — Egzersiz rehberi (görseller + talimatlar) ve AI altyapısı  `[x]`
 **Amaç:** Egzersiz detayında "Nasıl yapılır" bölümü: başlangıç/bitiş pozisyonu görselleri + talimatlar;

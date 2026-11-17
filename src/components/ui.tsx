@@ -66,6 +66,7 @@ export function PressableScale({
   const animated = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
   return (
     <APressable
+      accessibilityRole="button"
       {...rest}
       onPressIn={(e) => {
         scale.set(withSpring(scaleTo, { damping: 18, stiffness: 420 }));
@@ -265,8 +266,24 @@ export function Badge({ label, tint, bg, icon }: { label: string; tint: string; 
   );
 }
 
+/** İkon butonlarının varsayılan ekran okuyucu etiketleri (Türkçe). */
+const ICON_LABELS: Partial<Record<IconName, string>> = {
+  close: 'Kapat',
+  chevronUp: 'Yukarı taşı',
+  chevronDown: 'Aşağı',
+  chevronLeft: 'Önceki',
+  chevronRight: 'Sonraki',
+  trash: 'Sil',
+  settings: 'Ayarlar',
+  add: 'Ekle',
+  body: 'Vücut analizi',
+  more: 'Daha fazla seçenek',
+  edit: 'Düzenle',
+};
+
 export function IconButton({
   icon,
+  label,
   onPress,
   color,
   bg,
@@ -274,6 +291,8 @@ export function IconButton({
   style,
 }: {
   icon: IconName;
+  /** ekran okuyucu etiketi (verilmezse ikona göre varsayılan) */
+  label?: string;
   onPress?: () => void;
   color?: string;
   bg?: string;
@@ -283,6 +302,8 @@ export function IconButton({
   const t = useTheme();
   return (
     <PressableScale
+      accessibilityRole="button"
+      accessibilityLabel={label ?? ICON_LABELS[icon] ?? icon}
       onPress={onPress}
       hitSlop={8}
       style={[styles.iconBtn, { backgroundColor: bg ?? t.surfaceRaised, borderColor: t.border }, style]}>

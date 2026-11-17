@@ -11,6 +11,8 @@
     "expo-audio": "~58.0.12",
     "expo-constants": "~58.0.16",
     "expo-device": "~58.0.5",
+    "expo-document-picker": "~58.0.5",
+    "expo-file-system": "~58.0.13",
     "expo-font": "~58.0.12",
     "expo-glass-effect": "~58.0.5",
     "expo-haptics": "~58.0.8",
@@ -22,6 +24,7 @@
     "expo-notifications": "~58.1.9",
     "expo-router": "~58.0.31",
     "expo-secure-store": "~58.0.3",
+    "expo-sharing": "~58.0.23",
     "expo-splash-screen": "~58.0.14",
     "expo-sqlite": "~58.0.17",
     "expo-status-bar": "~58.0.5",
@@ -41,6 +44,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "esbuild": "^0.28.2",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~58.0.4",
     "typescript": "~6.0.3"
@@ -51,7 +55,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test": "node scripts/test.mjs"
   },
   "private": true
 }

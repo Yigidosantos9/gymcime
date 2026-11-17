@@ -16,16 +16,19 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDayLong } from '@/lib/format';
 import { syncReminders } from '@/lib/reminder-io';
 import { beginWorkout } from '@/lib/start-workout';
-import { WEEKDAY_SHORT } from '@/lib/week-plan';
-
-const SORTS: { key: RoutineSort; label: string }[] = [
-  { key: 'manual', label: 'Elle' },
-  { key: 'recent', label: 'Son yapılan' },
-  { key: 'name', label: 'Ad' },
-  { key: 'created', label: 'Yeni' },
-];
+import { weekdayShort } from '@/lib/week-plan';
+import { currentLocale } from '@/i18n';
+import { useT } from '@/components/language-provider';
+import { routineLabel } from '@/i18n/labels';
 
 export default function Routines() {
+  const _ = useT();
+  const SORTS: { key: RoutineSort; label: string }[] = [
+    { key: 'manual', label: _('routines.manual') },
+    { key: 'recent', label: _('routines.last_done') },
+    { key: 'name', label: _('routines.name') },
+    { key: 'created', label: _('routines.new') },
+  ];
   const t = useTheme();
   const sheet = useSheet();
   const { data, db, reload } = useDbQuery(async (db) => {
@@ -56,11 +59,11 @@ export default function Routines() {
 
   const confirmDelete = (r: RoutineSummary) =>
     sheet.actions({
-      title: `"${r.name}" silinsin mi?`,
-      message: 'Geçmiş antrenmanların silinmez. Haftalık plandaki günü dinlenme günü olur.',
+      title: _('routines.delete', { name: routineLabel(r.name) }),
+      message: _('routines.your_past_workouts_are_kept'),
       actions: [
         {
-          label: 'Rutini sil',
+          label: _('common.delete_routine'),
           icon: 'trash',
           style: 'destructive',
           onPress: async () => {
@@ -74,19 +77,19 @@ export default function Routines() {
 
   const openMenu = (r: RoutineSummary) =>
     sheet.actions({
-      title: r.name,
+      title: routineLabel(r.name),
       actions: [
-        { label: 'Düzenle', icon: 'edit', onPress: () => router.push(`/routine/${r.id}`) },
+        { label: _('common.edit'), icon: 'edit', onPress: () => router.push(`/routine/${r.id}`) },
         {
-          label: 'Kopyala',
+          label: _('routines.duplicate'),
           icon: 'copy',
           onPress: async () => {
             await duplicateRoutine(db, r.id);
             await reload();
           },
         },
-        { label: 'Başlat', icon: 'play', style: 'primary', onPress: () => beginWorkout(db, r.id, sheet) },
-        { label: 'Sil', icon: 'trash', style: 'destructive', onPress: () => confirmDelete(r) },
+        { label: _('routines.start'), icon: 'play', style: 'primary', onPress: () => beginWorkout(db, r.id, sheet) },
+        { label: _('common.delete'), icon: 'trash', style: 'destructive', onPress: () => confirmDelete(r) },
       ],
     });
 
@@ -94,20 +97,20 @@ export default function Routines() {
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: t.background }}>
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
         <HomeBack />
-        <ScreenHeader subtitle={routines ? `${routines.length} rutin` : undefined} title="Rutinler" />
+        <ScreenHeader subtitle={routines ? _('routines.routines', { count: routines.length }) : undefined} title={_('common.routines')} />
 
-        <Button title="Yeni rutin oluştur" icon="add" onPress={() => router.push('/routine/new')} style={{ marginBottom: Spacing.sm }} />
-        <Button title="Egzersiz kütüphanesi" icon="search" kind="secondary" onPress={() => router.push('/exercises')} style={{ marginBottom: Spacing.sm }} />
+        <Button title={_('common.create_a_new_routine')} icon="add" onPress={() => router.push('/routine/new')} style={{ marginBottom: Spacing.sm }} />
+        <Button title={_('common.exercise_library')} icon="search" kind="secondary" onPress={() => router.push('/exercises')} style={{ marginBottom: Spacing.sm }} />
 
-        <PressableScale onPress={() => router.push('/week-plan')} scaleTo={0.98} accessibilityLabel="Haftalık plan">
+        <PressableScale onPress={() => router.push('/week-plan')} scaleTo={0.98} accessibilityLabel={_('common.weekly_plan')}>
           <Card style={{ marginBottom: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
             <View style={[styles.planIcon, { backgroundColor: t.primarySoft }]}>
               <Icon name="history" size={18} color={t.primary} />
             </View>
             <View style={{ flex: 1, gap: 2 }}>
-              <T variant="heading">Haftalık plan</T>
+              <T variant="heading">{_('common.weekly_plan')}</T>
               <T variant="caption" secondary numberOfLines={2}>
-                {planned.length > 0 ? planned.map((d) => `${WEEKDAY_SHORT[d.weekday]} ${d.routine_name}`).join(' · ') : 'Pazartesi Göğüs, Salı Sırt… günlere rutin ata, takvimde gör.'}
+                {planned.length > 0 ? planned.map((d) => `${weekdayShort()[d.weekday]} ${routineLabel(d.routine_name ?? '')}`).join(' · ') : _('routines.assign_routines_to_days_monday')}
               </T>
             </View>
             <Icon name="chevronRight" size={14} color={t.textMuted} />
@@ -116,9 +119,7 @@ export default function Routines() {
 
         {routines && routines.length > 1 && (
           <View style={styles.sortRow}>
-            <T variant="overline" secondary>
-              Sırala
-            </T>
+            <T variant="overline" secondary>{_('routines.reorder')}</T>
             {SORTS.map((s) => (
               <Chip key={s.key} label={s.label} active={sort === s.key} onPress={() => pickSort(s.key)} />
             ))}
@@ -127,7 +128,7 @@ export default function Routines() {
 
         {routines && routines.length === 0 && (
           <Card>
-            <EmptyState icon="routines" title="Henüz rutin yok" text={'Örneğin “Sırt günü” veya “Göğüs + Triceps” oluştur; ya da bitirdiğin bir antrenmanı özet ekranından rutin olarak kaydet.'} />
+            <EmptyState icon="routines" title={_('routines.no_routines_yet')} text={_('routines.create_e_g_back_day')} />
           </Card>
         )}
 
@@ -140,16 +141,16 @@ export default function Routines() {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
                     <View style={{ flex: 1, gap: 4 }}>
                       <T variant="heading" style={{ fontSize: 18 }}>
-                        {r.name}
+                        {routineLabel(r.name)}
                       </T>
                       <T variant="caption" secondary>
-                        {r.exercise_count} egzersiz · {r.last_done ? `son ${formatDayLong(r.last_done).toLocaleLowerCase('tr-TR')}` : 'henüz yapılmadı'}
+                        {_('common.exercises', { count: r.exercise_count, v: r.last_done ? _('routines.last', { v: formatDayLong(r.last_done).toLocaleLowerCase(currentLocale()) }) : _('common.not_done_yet') })}
                       </T>
                     </View>
                     {sort === 'manual' && routines.length > 1 && (
                       <>
-                        <IconButton icon="chevronUp" label="Rutini yukarı taşı" onPress={() => move(r, -1)} bg="transparent" color={t.textSecondary} size={14} />
-                        <IconButton icon="chevronDown" label="Rutini aşağı taşı" onPress={() => move(r, 1)} bg="transparent" color={t.textSecondary} size={14} />
+                        <IconButton icon="chevronUp" label={_('routines.move_routine_up')} onPress={() => move(r, -1)} bg="transparent" color={t.textSecondary} size={14} />
+                        <IconButton icon="chevronDown" label={_('routines.move_routine_down')} onPress={() => move(r, 1)} bg="transparent" color={t.textSecondary} size={14} />
                       </>
                     )}
                   </View>
@@ -167,9 +168,9 @@ export default function Routines() {
                     </View>
                   )}
                   <View style={styles.actions}>
-                    <Button title="Düzenle" icon="edit" kind="secondary" small onPress={() => router.push(`/routine/${r.id}`)} style={{ flex: 1 }} />
-                    <Button title="Başlat" icon="play" small onPress={() => beginWorkout(db, r.id, sheet)} style={{ flex: 1 }} />
-                    <IconButton icon="more" label="Rutin seçenekleri" onPress={() => openMenu(r)} />
+                    <Button title={_('common.edit')} icon="edit" kind="secondary" small onPress={() => router.push(`/routine/${r.id}`)} style={{ flex: 1 }} />
+                    <Button title={_('routines.start')} icon="play" small onPress={() => beginWorkout(db, r.id, sheet)} style={{ flex: 1 }} />
+                    <IconButton icon="more" label={_('routines.routine_options')} onPress={() => openMenu(r)} />
                   </View>
                 </Card>
               </PressableScale>
@@ -177,7 +178,7 @@ export default function Routines() {
           );
         })}
 
-        <Button title="Boş antrenman başlat" icon="bolt" kind="secondary" onPress={() => beginWorkout(db, null, sheet)} style={{ marginTop: Spacing.sm }} />
+        <Button title={_('routines.start_empty_workout')} icon="bolt" kind="secondary" onPress={() => beginWorkout(db, null, sheet)} style={{ marginTop: Spacing.sm }} />
       </ScrollView>
     </SafeAreaView>
   );

@@ -16,6 +16,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { Icon } from '@/components/icon';
 import { useTheme } from '@/hooks/use-theme';
 import { haptic } from '@/lib/haptics';
+import { useT } from '@/components/language-provider';
 
 /**
  * Sürükle-bırak ile sıralanan dikey liste (yeni paket gerekmez: gesture-handler + reanimated).
@@ -199,6 +200,7 @@ function Row({
   onMove: (from: number, to: number) => void;
   children: (handle: ReactNode) => ReactNode;
 }) {
+  const _ = useT();
   const t = useTheme();
   const { active, over, finger, startScroll, scrollY, heights, autoDir } = shared;
 
@@ -257,11 +259,11 @@ function Row({
       <View
         accessible
         accessibilityRole="adjustable"
-        accessibilityLabel="Sırayı değiştir"
-        accessibilityHint="Yukarı veya aşağı kaydırarak taşı"
+        accessibilityLabel={_('dragList.change_order')}
+        accessibilityHint={_('dragList.swipe_up_or_down_to')}
         accessibilityActions={[
-          { name: 'increment', label: 'Aşağı taşı' },
-          { name: 'decrement', label: 'Yukarı taşı' },
+          { name: 'increment', label: _('dragList.move_down') },
+          { name: 'decrement', label: _('common.move_up') },
         ]}
         onAccessibilityAction={(ev) => {
           if (ev.nativeEvent.actionName === 'increment' && index < count - 1) onMove(index, index + 1);

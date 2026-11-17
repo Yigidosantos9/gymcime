@@ -55,6 +55,9 @@ import { baseRest, formatRest, REST_PRESETS, restAfter, SET_TYPES, type SetType 
 import type { IconName } from '@/components/icon';
 import type { Palette } from '@/constants/theme';
 import { leave } from '@/lib/nav';
+import { useT } from '@/components/language-provider';
+import { muscleLabel, routineLabel } from '@/i18n/labels';
+import { t as tt } from '@/i18n';
 
 const KIND_ICON: Record<SuggestKind, IconName> = {
   start: 'sparkles',
@@ -74,12 +77,13 @@ const KIND_COLOR = (t: Palette): Record<SuggestKind, string> => ({
 });
 
 function ConfidenceDots({ level }: { level: 'low' | 'medium' | 'high' }) {
+  const _ = useT();
   const t = useTheme();
   const n = level === 'high' ? 3 : level === 'medium' ? 2 : 1;
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
       <T variant="caption" muted style={{ fontSize: 10 }}>
-        güven
+        {_('workout.confidence')}
       </T>
       {[0, 1, 2].map((i) => (
         <View key={i} style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: i < n ? t.primary : t.surfacePressed }} />
@@ -92,6 +96,7 @@ type Db = ReturnType<typeof useDbQuery>['db'];
 type Sheet = ReturnType<typeof useSheet>;
 
 export default function WorkoutScreen() {
+  const _ = useT();
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const sheet = useSheet();
@@ -136,8 +141,8 @@ export default function WorkoutScreen() {
   if (!data.detail) {
     return (
       <View style={{ flex: 1, backgroundColor: t.background, alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-        <T>Antrenman bulunamadı.</T>
-        <Button title="Geri dön" kind="secondary" onPress={leave} />
+        <T>{_('workout.workout_not_found')}</T>
+        <Button title={_('workout.go_back')} kind="secondary" onPress={leave} />
       </View>
     );
   }
@@ -174,27 +179,27 @@ export default function WorkoutScreen() {
     };
     if (doneSets === 0) {
       sheet.actions({
-        title: 'Hiç set tamamlanmadı',
-        message: 'Bitirirsen bu antrenman kaydedilmeden silinir.',
-        actions: [{ label: 'Sil ve çık', icon: 'trash', style: 'destructive', onPress: go }],
+        title: _('workout.no_sets_completed'),
+        message: _('workout.if_you_finish_this_workout'),
+        actions: [{ label: _('workout.delete_and_exit'), icon: 'trash', style: 'destructive', onPress: go }],
       });
     } else {
       sheet.actions({
-        title: 'Antrenmanı bitir?',
-        message: pending > 0 ? `${pending} tamamlanmamış set kaydedilmeyecek.` : 'Harika iş çıkardın! 💪',
-        actions: [{ label: 'Bitir ve kaydet', icon: 'checkCircle', style: 'primary', onPress: go }],
-        cancelLabel: 'Devam et',
+        title: _('workout.finish_workout'),
+        message: pending > 0 ? _('workout.incomplete_sets_won_t_be', { count: pending }) : _('workout.great_job'),
+        actions: [{ label: _('workout.finish_and_save'), icon: 'checkCircle', style: 'primary', onPress: go }],
+        cancelLabel: _('common.continue'),
       });
     }
   };
 
   const onDiscard = () => {
     sheet.actions({
-      title: 'Antrenmanı iptal et?',
-      message: 'Bu antrenmandaki tüm kayıtlar silinecek.',
+      title: _('workout.cancel_workout'),
+      message: _('workout.all_records_in_this_workout'),
       actions: [
         {
-          label: 'İptal et ve sil',
+          label: _('workout.cancel_and_delete'),
           icon: 'trash',
           style: 'destructive',
           onPress: async () => {
@@ -211,10 +216,10 @@ export default function WorkoutScreen() {
     <View style={{ flex: 1, backgroundColor: t.background }}>
       {/* Üst bar */}
       <View style={[styles.topBar, { paddingTop: insets.top + 6 }]}>
-        <IconButton icon="chevronDown" label="Antrenmanı küçült" onPress={leave} />
+        <IconButton icon="chevronDown" label={_('workout.minimize_workout')} onPress={leave} />
         <View style={{ flex: 1, alignItems: 'center' }}>
           <T variant="heading" numberOfLines={1}>
-            {workout.name}
+            {routineLabel(workout.name)}
           </T>
           <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
             <Elapsed since={workout.started_at} />
@@ -222,14 +227,11 @@ export default function WorkoutScreen() {
               ·
             </T>
             <T variant="caption" secondary style={{ fontVariant: ['tabular-nums'] }}>
-              {doneSets}/{allSets.length} set
-            </T>
+              {_('workout.sets', { doneSets: doneSets, count: allSets.length })}</T>
           </View>
         </View>
-        <PressableScale onPress={onFinish} accessibilityLabel="Antrenmanı bitir" style={[styles.finishBtn, { backgroundColor: t.success }]}>
-          <T variant="label" color={t.onPrimary} style={{ fontFamily: Font.bold }}>
-            Bitir
-          </T>
+        <PressableScale onPress={onFinish} accessibilityLabel={_('workout.finish_workout2')} style={[styles.finishBtn, { backgroundColor: t.success }]}>
+          <T variant="label" color={t.onPrimary} style={{ fontFamily: Font.bold }}>{_('workout.finish')}</T>
         </PressableScale>
       </View>
       <View style={{ height: 3, backgroundColor: t.surface, marginHorizontal: Spacing.lg, borderRadius: 2, overflow: 'hidden' }}>
@@ -248,8 +250,8 @@ export default function WorkoutScreen() {
           {exercises.length === 0 && (
             <Animated.View entering={FadeIn} style={{ alignItems: 'center', paddingVertical: 48, gap: 8 }}>
               <Icon name="homeOutline" size={40} color={t.primary} />
-              <T variant="heading">Boş bir sayfa 🌊</T>
-              <T secondary>İlk egzersizini ekleyerek başla.</T>
+              <T variant="heading">{_('workout.a_blank_page')}</T>
+              <T secondary>{_('workout.start_by_adding_your_first')}</T>
             </Animated.View>
           )}
 
@@ -286,14 +288,14 @@ export default function WorkoutScreen() {
           ))}
 
           <Button
-            title="Egzersiz ekle"
+            title={_('common.add_exercise')}
             icon="addCircle"
             kind="secondary"
             onPress={() => router.push(`/exercise-picker?workoutId=${workoutId}`)}
             style={{ marginTop: Spacing.sm }}
           />
-          <Button title="Antrenmanı bitir" icon="checkCircle" kind="success" onPress={onFinish} style={{ marginTop: Spacing.lg }} />
-          <Button title="Antrenmanı iptal et" kind="ghost" onPress={onDiscard} style={{ marginTop: Spacing.sm }} />
+          <Button title={_('workout.finish_workout2')} icon="checkCircle" kind="success" onPress={onFinish} style={{ marginTop: Spacing.lg }} />
+          <Button title={_('workout.cancel_workout2')} kind="ghost" onPress={onDiscard} style={{ marginTop: Spacing.sm }} />
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -320,9 +322,7 @@ export default function WorkoutScreen() {
           style={[styles.toast, { top: insets.top + 74, backgroundColor: t.surfaceRaised, borderColor: t.gold }]}>
           <T style={{ fontSize: 24 }}>🏆</T>
           <View>
-            <T variant="heading" color={t.gold}>
-              Yeni kişisel rekor!
-            </T>
+            <T variant="heading" color={t.gold}>{_('workout.new_personal_record')}</T>
             <T variant="caption" secondary>
               {prToast}
             </T>
@@ -356,7 +356,7 @@ function nextTarget(exercises: WorkoutExerciseFull[], increments: Increments, pr
       return `${ex.name} · ${setLabel(ex.sets, next.s)}${d ? ` · ${formatHold(d)}` : ''}`;
     }
     if (next) {
-      const what = next.phWeight != null ? `${formatWeight(next.phWeight)} kg × ${next.phReps}` : `${next.phReps} tekrar`;
+      const what = next.phWeight != null ? `${formatWeight(next.phWeight)} kg × ${next.phReps}` : tt('common.reps_n', { count: next.phReps });
       return `${ex.name} · ${setLabel(ex.sets, next.s)} · ${what}`;
     }
   }
@@ -374,6 +374,7 @@ function EffortPanel({
   onPick: (rir: number) => void;
   onClose: () => void;
 }) {
+  const _ = useT();
   const t = useTheme();
   const colors: Record<number, [string, string]> = {
     4: [t.success, t.successSoft],
@@ -388,14 +389,11 @@ function EffortPanel({
       style={[styles.effortPanel, { bottom, backgroundColor: t.surfaceRaised, borderColor: t.borderStrong, shadowColor: t.shadow }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
         <View style={{ flex: 1 }}>
-          <T variant="heading" style={{ fontSize: 15 }}>
-            Bu set nasıl geçti?
-          </T>
+          <T variant="heading" style={{ fontSize: 15 }}>{_('common.how_did_this_set_go')}</T>
           <T variant="caption" muted numberOfLines={1}>
-            {exName} · sonraki setin önerisi buna göre ayarlanır
-          </T>
+            {_('workout.the_next_set_s_suggestion', { exName: exName })}</T>
         </View>
-        <PressableScale onPress={onClose} hitSlop={12} accessibilityLabel="Kapat" style={styles.effortClose}>
+        <PressableScale onPress={onClose} hitSlop={12} accessibilityLabel={_('common.close')} style={styles.effortClose}>
           <Icon name="close" size={13} color={t.textMuted} />
         </PressableScale>
       </View>
@@ -417,9 +415,9 @@ function EffortPanel({
 }
 
 function setLabel(sets: SetRowData[], s: SetRowData) {
-  if (s.set_type === 'warmup') return 'Isınma';
+  if (s.set_type === 'warmup') return tt('workout.warm_up');
   const n = sets.filter((x) => x.set_type !== 'warmup' && x.position <= s.position).length;
-  return `Set ${n}`;
+  return tt('workout.set_n', { n });
 }
 
 function Elapsed({ since }: { since: number }) {
@@ -457,6 +455,7 @@ function ExerciseBlock({
   onChanged: () => void;
   onSetDone: (set: SetRowData, isPr: boolean) => void;
 }) {
+  const _ = useT();
   const t = useTheme();
   const sug = ex.suggestion;
   const sugColor = KIND_COLOR(t)[sug.kind];
@@ -479,7 +478,7 @@ function ExerciseBlock({
 
   const openRest = () =>
     sheet.custom({
-      title: `${ex.name} · dinlenme`,
+      title: _('common.rest', { name: ex.name }),
       render: (close) => (
         <RestPicker
           current={rest}
@@ -501,22 +500,22 @@ function ExerciseBlock({
         ...(timeBased
           ? isCardio
             ? []
-            : [{ label: `Dinlenme: ${formatRest(rest)}`, icon: 'timer' as const, onPress: openRest }]
+            : [{ label: _('workout.rest', { v: formatRest(rest) }), icon: 'timer' as const, onPress: openRest }]
           : [
               {
-                label: 'Isınma seti ekle',
+                label: _('workout.add_warm_up_set'),
                 icon: 'flame' as const,
                 onPress: async () => {
                   await addSet(db, ex.id, 'warmup');
                   onChanged();
                 },
               },
-              { label: `Dinlenme: ${formatRest(rest)}`, icon: 'timer' as const, onPress: openRest },
+              { label: _('workout.rest', { v: formatRest(rest) }), icon: 'timer' as const, onPress: openRest },
             ]),
-        ...(isBarbell ? [{ label: 'Plaka hesaplayıcı', icon: 'barbell' as const, onPress: openPlates }] : []),
-        { label: 'Geçmişi ve grafikleri gör', icon: 'progress', onPress: () => router.push(`/exercise/${ex.exercise_id}`) },
+        ...(isBarbell ? [{ label: _('common.plate_calculator'), icon: 'barbell' as const, onPress: openPlates }] : []),
+        { label: _('workout.see_history_and_charts'), icon: 'progress', onPress: () => router.push(`/exercise/${ex.exercise_id}`) },
         {
-          label: 'Egzersizi kaldır',
+          label: _('workout.remove_exercise'),
           icon: 'trash',
           style: 'destructive',
           onPress: async () => {
@@ -536,11 +535,11 @@ function ExerciseBlock({
             {ex.name}
           </T>
           <T variant="caption" secondary>
-            {timeBased ? `${ex.muscle} · ${isCardio ? 'süre + mesafe' : 'süre'}` : `${ex.muscle} · ${ex.rep_min}-${ex.rep_max} tekrar`}
+            {timeBased ? `${muscleLabel(ex.muscle)} · ${isCardio ? _('workout.time_distance') : _('workout.time')}` : _('workout.reps', { muscle: muscleLabel(ex.muscle), rep_min: ex.rep_min, rep_max: ex.rep_max })}
           </T>
         </PressableScale>
         {!isCardio && (
-          <PressableScale onPress={openRest} accessibilityLabel="Dinlenme süresini değiştir" style={[styles.restChip, { backgroundColor: t.primarySoft }]}>
+          <PressableScale onPress={openRest} accessibilityLabel={_('workout.change_rest_time')} style={[styles.restChip, { backgroundColor: t.primarySoft }]}>
             <Icon name="timer" size={12} color={t.primary} />
             <T variant="caption" color={t.primary} style={{ fontFamily: Font.bold }}>
               {formatRest(rest)}
@@ -564,18 +563,16 @@ function ExerciseBlock({
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Icon name={KIND_ICON[sug.kind]} size={13} color={sugColor} />
           <T variant="label" color={sugColor} style={{ fontFamily: Font.heavy }}>
-            {sug.weight != null ? `${formatWeight(sug.weight)} kg × ${sug.reps}` : `${sug.reps} tekrar`}
+            {sug.weight != null ? _('workout.kg', { v: formatWeight(sug.weight), reps: sug.reps }) : _('workout.reps2', { count: sug.reps })}
           </T>
           {ex.style === 'ramp' && plan.length > 1 && sug.weight != null && (
-            <T variant="caption" muted>
-              en ağır set
-            </T>
+            <T variant="caption" muted>{_('workout.heaviest_set')}</T>
           )}
           <View style={{ flex: 1 }} />
           <PressableScale
-            onPress={() => sheet.custom({ title: 'Öneri kuralları', render: () => <RulesSheet step={step} /> })}
+            onPress={() => sheet.custom({ title: _('workout.suggestion_rules'), render: () => <RulesSheet step={step} /> })}
             accessibilityRole="button"
-            accessibilityLabel="Öneri kurallarını göster"
+            accessibilityLabel={_('workout.show_suggestion_rules')}
             hitSlop={10}
             style={[styles.helpBtn, { backgroundColor: t.surfacePressed }]}>
             <T variant="caption" color={t.textSecondary} style={{ fontFamily: Font.bold }}>
@@ -590,7 +587,7 @@ function ExerciseBlock({
         {plan.length > 1 && plan.some((p) => p.weight != null) && (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <Badge
-              label={ex.style === 'ramp' ? 'Piramit' : 'Sabit'}
+              label={ex.style === 'ramp' ? _('workout.pyramid') : _('workout.straight')}
               tint={ex.style === 'ramp' ? t.accent : t.textSecondary}
               bg={ex.style === 'ramp' ? t.accentSoft : t.surfacePressed}
             />
@@ -601,8 +598,8 @@ function ExerciseBlock({
         )}
         {(sug.e1rm != null || sug.plateau) && (
           <T variant="caption" muted>
-            {sug.e1rm != null ? `Tahmini 1RM ${formatWeight(Math.round(sug.e1rm * 2) / 2)} kg` : ''}
-            {sug.plateau ? ' · ⚠︎ plato' : ''}
+            {sug.e1rm != null ? _('workout.estimated_1rm_kg', { v: formatWeight(Math.round(sug.e1rm * 2) / 2) }) : ''}
+            {sug.plateau ? _('workout.plateau') : ''}
           </T>
         )}
         {liveNote && (
@@ -622,8 +619,7 @@ function ExerciseBlock({
             }}
             style={[styles.warmupBtn, { backgroundColor: t.goldSoft }]}>
             <Icon name="flame" size={12} color={t.gold} />
-            <T variant="caption" color={t.gold} style={{ fontFamily: Font.bold }}>
-              Isınma ekle: {sug.warmups.map((w) => `${formatWeight(w.weight)}×${w.reps}`).join(' · ')}
+            <T variant="caption" color={t.gold} style={{ fontFamily: Font.bold }}>{_('workout.add_warm_up', { v: sug.warmups.map((w) => `${formatWeight(w.weight)}×${w.reps}`).join(' · ') })}
             </T>
           </PressableScale>
         )}
@@ -631,47 +627,35 @@ function ExerciseBlock({
       )}
 
       <View style={styles.headRow}>
-        <T variant="overline" muted style={styles.colSet}>
-          Set
-        </T>
+        <T variant="overline" muted style={styles.colSet}>{_('common.sets')}</T>
         {!isCardio && (
-          <T variant="overline" muted style={styles.colPrev}>
-            Önceki
-          </T>
+          <T variant="overline" muted style={styles.colPrev}>{_('common.previous')}</T>
         )}
         {timeBased ? (
           <>
             <T variant="overline" muted style={styles.colInput}>
-              {isCardio ? 'Süre dk:sn' : 'Süre'}
+              {isCardio ? _('workout.time_min_sec') : _('common.duration')}
             </T>
             {isCardio && (
               <>
-                <T variant="overline" muted style={styles.colInput}>
-                  Mesafe km
-                </T>
-                <T variant="overline" muted style={styles.colInput}>
-                  Eğim/sev.
-                </T>
+                <T variant="overline" muted style={styles.colInput}>{_('workout.distance_km')}</T>
+                <T variant="overline" muted style={styles.colInput}>{_('workout.incline_lvl')}</T>
               </>
             )}
           </>
         ) : (
           <>
             {isBarbell ? (
-              <PressableScale onPress={openPlates} accessibilityRole="button" accessibilityLabel="Plaka hesaplayıcı" hitSlop={8} style={[styles.colInput, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 }]}>
-                <T variant="overline" color={t.primary}>
-                  kg
-                </T>
+              <PressableScale onPress={openPlates} accessibilityRole="button" accessibilityLabel={_('common.plate_calculator')} hitSlop={8} style={[styles.colInput, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 }]}>
+                <T variant="overline" color={t.primary}>{_('common.kg')}</T>
                 <Icon name="barbell" size={10} color={t.primary} />
               </PressableScale>
             ) : (
               <T variant="overline" muted style={styles.colInput}>
-                {ex.kind === 'bodyweight' ? '+kg' : 'kg'}
+                {ex.kind === 'bodyweight' ? _('workout.kg2') : _('common.kg')}
               </T>
             )}
-            <T variant="overline" muted style={styles.colInput}>
-              Tekrar
-            </T>
+            <T variant="overline" muted style={styles.colInput}>{_('workout.reps3')}</T>
           </>
         )}
         <View style={styles.colCheck} />
@@ -706,12 +690,10 @@ function ExerciseBlock({
           await addSet(db, ex.id);
           onChanged();
         }}
-        accessibilityLabel="Set ekle"
+        accessibilityLabel={_('common.add_set')}
         style={[styles.addSet, { backgroundColor: t.surfaceRaised }]}>
         <Icon name="add" size={13} color={t.textSecondary} />
-        <T variant="label" secondary>
-          Set ekle
-        </T>
+        <T variant="label" secondary>{_('common.add_set')}</T>
       </PressableScale>
     </Card>
   );
@@ -808,28 +790,23 @@ function computePlanRows(ex: WorkoutExerciseFull, step: number) {
 // ───────────────────────── Öneri kuralları ─────────────────────────
 
 function RulesSheet({ step }: { step: number }) {
+  const _ = useT();
   const t = useTheme();
   return (
     <View style={{ gap: Spacing.md }}>
-      <T variant="caption" secondary>
-        1 adım = ekipmanın artış değeri{step > 0 ? ` (bu harekette ${formatWeight(step)} kg)` : ' (vücut ağırlığında 1 tekrar)'}. Öneri en ağır sete göre hesaplanır; zorluk seçmezsen hedef tekrar tutturulduysa İyi, 1 eksikse Zor, 2+ eksikse Tükendim sayılır.
-      </T>
+      <T variant="caption" secondary>{_('workout.1_step_the_equipment_s', { v: step > 0 ? _('workout.for_this_exercise_kg', { v: formatWeight(step) }) : _('workout.1_rep_at_bodyweight') })}</T>
       {RULE_TABLE.map((r) => (
         <View key={r.effort} style={[styles.ruleRow, { backgroundColor: t.surfaceRaised }]}>
           <T variant="label" style={{ fontFamily: Font.heavy }}>
             {EFFORT_NAME[r.effort]} <T variant="caption" muted>· {r.meaning}</T>
           </T>
-          <T variant="caption" secondary>
-            Seans içi: {r.inSession}
+          <T variant="caption" secondary>{_('workout.within_session', { inSession: r.inSession })}
           </T>
-          <T variant="caption" secondary>
-            Sonraki antrenman: {r.nextWorkout}
+          <T variant="caption" secondary>{_('workout.next_workout', { nextWorkout: r.nextWorkout })}
           </T>
         </View>
       ))}
-      <T variant="caption" muted>
-        Vücut ağırlığında: Kolay +2 · İyi +1 · Zor aynı · Tükendim −1 tekrar (hedefin altındaysa ya da zorluk seçilmediyse gerileme yok). 14 günden uzun aradan sonra hafif başlanır. Tahmini 1RM yalnızca bilgidir.
-      </T>
+      <T variant="caption" muted>{_('workout.at_bodyweight_easy_2_good')}</T>
     </View>
   );
 }
@@ -837,6 +814,7 @@ function RulesSheet({ step }: { step: number }) {
 // ───────────────────────── Dinlenme seçici ─────────────────────────
 
 function RestPicker({ current, onPick }: { current: number; onPick: (secs: number, always: boolean) => void }) {
+  const _ = useT();
   const t = useTheme();
   const [value, setValue] = useState(current);
   return (
@@ -857,8 +835,8 @@ function RestPicker({ current, onPick }: { current: number; onPick: (secs: numbe
         ))}
       </View>
       <View style={{ gap: Spacing.sm }}>
-        <Button title="Bu antrenman için" kind="secondary" onPress={() => onPick(value, false)} />
-        <Button title="Bu egzersiz için her zaman" icon="check" onPress={() => onPick(value, true)} />
+        <Button title={_('workout.for_this_workout')} kind="secondary" onPress={() => onPick(value, false)} />
+        <Button title={_('workout.always_for_this_exercise')} icon="check" onPress={() => onPick(value, true)} />
       </View>
     </View>
   );
@@ -867,6 +845,7 @@ function RestPicker({ current, onPick }: { current: number; onPick: (secs: numbe
 // ───────────────────────── Set satırı ─────────────────────────
 
 function SetNoteEditor({ initial, onSave }: { initial: string; onSave: (text: string) => void | Promise<void> }) {
+  const _ = useT();
   const t = useTheme();
   const [text, setText] = useState(initial);
   return (
@@ -876,12 +855,12 @@ function SetNoteEditor({ initial, onSave }: { initial: string; onSave: (text: st
         onChangeText={setText}
         maxLength={140}
         autoFocus
-        placeholder="Ör. omuz hafif sızladı, tempo yavaş"
+        placeholder={_('workout.e_g_shoulder_twinged_slightly')}
         placeholderTextColor={t.textMuted}
-        accessibilityLabel="Set notu"
+        accessibilityLabel={_('workout.set_note')}
         style={[styles.input, { height: 48, paddingHorizontal: Spacing.md, fontFamily: Font.medium, fontSize: 15, textAlign: 'left', backgroundColor: t.surfaceRaised, color: t.text }]}
       />
-      <Button title="Kaydet" icon="check" onPress={() => onSave(text)} />
+      <Button title={_('common.save')} icon="check" onPress={() => onSave(text)} />
     </View>
   );
 }
@@ -913,6 +892,7 @@ function SetRow({
   onDone: (isPr: boolean) => void;
   onChanged: () => void;
 }) {
+  const _ = useT();
   const t = useTheme();
   const [w, setW] = useState(set.weight != null ? formatWeight(set.weight) : '');
   const [r, setR] = useState(set.reps != null ? String(set.reps) : '');
@@ -973,7 +953,7 @@ function SetRow({
 
   const openType = () =>
     sheet.actions({
-      title: 'Set tipi',
+      title: _('common.set_type'),
       actions: SET_TYPES.map((st) => ({
         label: `${st.label}${st.key === type ? '  ✓' : ''}`,
         style: st.key === type ? ('primary' as const) : ('default' as const),
@@ -983,7 +963,7 @@ function SetRow({
         },
       })).concat([
         {
-          label: set.note ? 'Notu düzenle' : 'Not ekle',
+          label: set.note ? _('workout.edit_note') : _('workout.add_note'),
           style: 'default' as const,
           onPress: async () => openNote(),
         },
@@ -992,7 +972,7 @@ function SetRow({
 
   const openNote = () =>
     sheet.custom({
-      title: 'Set notu',
+      title: _('workout.set_note'),
       render: (close) => (
         <SetNoteEditor
           initial={set.note ?? ''}
@@ -1010,8 +990,8 @@ function SetRow({
 
   const openEffort = () =>
     sheet.actions({
-      title: 'Bu set nasıl geçti?',
-      message: 'Önerileri daha isabetli yapar. İsteğe bağlı.',
+      title: _('common.how_did_this_set_go'),
+      message: _('workout.makes_suggestions_more_accurate'),
       actions: [
         ...EFFORT.map((e) => ({
           label: `${e.label} · ${e.hint}`,
@@ -1024,7 +1004,7 @@ function SetRow({
         ...(set.rir != null
           ? [
               {
-                label: 'Temizle',
+                label: _('common.clear'),
                 onPress: async () => {
                   await setSetRir(db, set.id, null);
                   onChanged();
@@ -1048,13 +1028,13 @@ function SetRow({
       rightThreshold={60}
       overshootRight={false}
       renderRightActions={() => (
-        <PressableScale onPress={remove} accessibilityLabel="Seti sil" style={[styles.swipeDelete, { backgroundColor: t.danger }]}>
+        <PressableScale onPress={remove} accessibilityLabel={_('common.delete_set')} style={[styles.swipeDelete, { backgroundColor: t.danger }]}>
           <Icon name="trash" size={18} color="#fff" />
         </PressableScale>
       )}>
       <Animated.View layout={LinearTransition.springify().damping(20)} style={[styles.setRow, { backgroundColor: t.surface }]}>
         {done && <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: t.successSoft, borderRadius: Radius.sm }]} />}
-        <PressableScale onPress={openType} accessibilityLabel={`Set tipini değiştir, set ${short || label}`} style={styles.colSet} scaleTo={0.85}>
+        <PressableScale onPress={openType} accessibilityLabel={_('workout.change_set_type_set', { v: short || label })} style={styles.colSet} scaleTo={0.85}>
           <View style={[styles.setBadge, { backgroundColor: done && type === 'normal' ? t.success : typeBg }]}>
             {set.is_pr ? (
               <T style={{ fontSize: 13 }}>🏆</T>
@@ -1070,10 +1050,10 @@ function SetRow({
             {prevLabel}
           </T>
         ) : done && type !== 'warmup' ? (
-          <PressableScale onPress={openEffort} accessibilityLabel={set.rir != null ? `Zorluk: ${effortLabel(set.rir)}. Değiştir` : 'Zorluğu seç'} style={styles.colPrev} scaleTo={0.9} hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}>
+          <PressableScale onPress={openEffort} accessibilityLabel={set.rir != null ? _('workout.difficulty_change', { v: effortLabel(set.rir) }) : _('workout.pick_difficulty')} style={styles.colPrev} scaleTo={0.9} hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}>
             <View style={[styles.effort, { backgroundColor: set.rir != null ? effortBg : 'transparent', borderColor: set.rir != null ? 'transparent' : t.borderStrong }]}>
               <T variant="caption" color={set.rir != null ? effortFg : t.textMuted} style={{ fontFamily: Font.bold, fontSize: 11 }}>
-                {effortLabel(set.rir) ?? 'Zorluk?'}
+                {effortLabel(set.rir) ?? _('common.difficulty')}
               </T>
             </View>
           </PressableScale>
@@ -1093,7 +1073,7 @@ function SetRow({
               keyboardType="numbers-and-punctuation"
               selectTextOnFocus
               editable={!done}
-              accessibilityLabel="Süre"
+              accessibilityLabel={_('common.duration')}
               style={[styles.input, styles.colInput, { backgroundColor: done ? 'transparent' : t.surfaceRaised, color: t.text }]}
             />
             {isCardio && (
@@ -1107,7 +1087,7 @@ function SetRow({
                   keyboardType="decimal-pad"
                   selectTextOnFocus
                   editable={!done}
-                  accessibilityLabel="Mesafe (km)"
+                  accessibilityLabel={_('workout.distance_km2')}
                   style={[styles.input, styles.colInput, { backgroundColor: done ? 'transparent' : t.surfaceRaised, color: t.text }]}
                 />
                 <TextInput
@@ -1119,7 +1099,7 @@ function SetRow({
                   keyboardType="decimal-pad"
                   selectTextOnFocus
                   editable={!done}
-                  accessibilityLabel="Eğim veya seviye"
+                  accessibilityLabel={_('workout.incline_or_level')}
                   style={[styles.input, styles.colInput, { backgroundColor: done ? 'transparent' : t.surfaceRaised, color: t.text }]}
                 />
               </>
@@ -1151,7 +1131,7 @@ function SetRow({
         />
           </>
         )}
-        <PressableScale onPress={toggle} accessibilityLabel={done ? 'Seti geri al' : 'Seti tamamla'} accessibilityState={{ checked: done }} style={styles.colCheck} hapticOnPress={false} scaleTo={0.82}>
+        <PressableScale onPress={toggle} accessibilityLabel={done ? _('workout.undo_set') : _('workout.complete_set')} accessibilityState={{ checked: done }} style={styles.colCheck} hapticOnPress={false} scaleTo={0.82}>
           <View style={[styles.check, { backgroundColor: done ? t.success : t.surfaceRaised, borderColor: done ? t.success : t.borderStrong }]}>
             <Icon name="check" size={17} color={done ? t.onPrimary : t.textMuted} weight="bold" />
           </View>
@@ -1168,8 +1148,7 @@ function SetRow({
       {done && set.rest_taken != null && set.rest_target != null && (
         <View style={[styles.restNote, { backgroundColor: t.surface }]}>
           <Icon name="timer" size={10} color={set.rest_taken > set.rest_target + 30 ? t.gold : t.textMuted} />
-          <T variant="caption" color={set.rest_taken > set.rest_target + 30 ? t.gold : t.textMuted} style={{ fontSize: 10 }}>
-            Bu setten önce {formatDuration(set.rest_taken * 1000)} dinlendin · hedef {formatRest(set.rest_target)}
+          <T variant="caption" color={set.rest_taken > set.rest_target + 30 ? t.gold : t.textMuted} style={{ fontSize: 10 }}>{_('workout.you_rested_before_this_set', { v: formatDuration(set.rest_taken * 1000), v2: formatRest(set.rest_target) })}
           </T>
         </View>
       )}

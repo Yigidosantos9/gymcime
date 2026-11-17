@@ -271,7 +271,7 @@ Kullanıcı isteği: haftanın günlerine rutin ata, takvimde görünsün. (Gör
 > Ana sayfa: plan şeridi (✓ yapıldı, soluk/kesikli = kaçırıldı, bugün vurgulu, "Bu hafta plan: x/y"), hero "Bugün: <rutin>" / "Bugün dinlenme günü 🌊" + "Yine de başla". Geçmiş: aylık takvim (`workoutsBetween`, rutine göre renk, planlı günler soluk, gün sheet'i). Hatırlatıcı: plan varsa yalnızca rutin atanmış günlerde "Bugün: <rutin> 💪"; plan/rutin/ayar/yedek değişince `syncReminders`.
 > Testler: `tests/week-plan.test.ts`. Kısıtlar: plan "rutin atanmış gün = antrenman günü", rutinsiz not-satırı dinlenme sayılır; takvimde bir günde birden çok antrenman varsa ilkinin adı/rengi gösterilir (köşe noktası). Simülatörde ana sayfa şeridi ve takvim görüldü; plan ekranı etkileşimleri cihazda denenmeli.
 
-## Görev 2.11 — Rutinde tekrar eden egzersiz uyarısı + geçmişe antrenman ekleme  `[ ]`
+## Görev 2.11 — Rutinde tekrar eden egzersiz uyarısı + geçmişe antrenman ekleme  `[x]`
 1. **Tekrar eden egzersiz (engelleme yok, uyarı var — kullanıcı kararı):** egzersiz seçicide, rutin/antrenmanda zaten olan hareketlerin
    satırında "Rutinde var" / "Antrenmanda var" etiketi; yine de seçilirse sheet: "<ad> zaten var — Yine de ekle / Vazgeç".
    Aynı egzersizin iki kopyası olduğunda öneri motoru, "önceki" sütunu ve PR hesabı bozulmasın (test).
@@ -282,7 +282,10 @@ Kullanıcı isteği: haftanın günlerine rutin ata, takvimde görünsün. (Gör
    (geçmişe eklenen set sonraki antrenmanların rekorlarını etkileyebilir), toparlanma/plan uyumu/öneriler/hatırlatıcılar güncel veriyi kullanır.
    Aynı güne ikinci antrenman eklenebilir. Testler: tarih sırasına göre PR yeniden hesabı, gelecek tarih reddi, boş set temizliği, plan uyumu.
 
-## Görev 2.12 — Dil desteği: Türkçe / English  `[ ]`
+> **Not (Görev 2.11 tamamlandı):** Seçici (`exercise-picker`) bağlamdaki egzersizlere "Rutinde var" / "Antrenmanda var" rozeti koyar; yine de seçilirse sheet "<ad> zaten var — Yine de ekle / Vazgeç" (engelleme yok). Rutin bağlamı `pickerStore.setExisting`, antrenman/geçmiş bağlamı `getWorkoutExerciseIds` ile. İki kopya: "önceki"/öneri kopyalar arasında tutarlı, PR hesabı bozulmaz (test). `getWorkoutDetail`/`recentSessionsBatch`/`recentCardioBatch` artık `before` ile yalnızca KENDİNDEN ESKİ seansları "önceki" sayar (geçmişe eklenen antrenman için doğru).
+> Geçmişe antrenman: `app/add-past-workout.tsx` (tarih ≤ bugün, başlangıç saati, süre, rutin/boş; gelecek reddi `createHistoryWorkout` içinde de) → `finished_at` dolu antrenman, rutinse set sayısıyla boş+tamamlanmış setler → `session/[id]?edit=1&fresh=1` düzenleme modunda açılır. `finalizeHistoryEdit` artık antrenmanın TÜM egzersizlerinin PR'larını tarih sırasına göre yeniden hesaplar, boş setleri/egzersizleri temizler, `dropIfEmpty` ile hiç set girilmeyen yeni antrenmanı atar, ardından `syncReminders`. Girişler: Geçmiş sekmesi butonu + takvim gün sheet'inde "Bu güne antrenman ekle" (gelecek günlerde yok). Testler: `tests/past-workout.test.ts`.
+
+## Görev 2.12 — Dil desteği: Türkçe / English  `[x]`
 - **Altyapı (ek kütüphane gerekmeden):** `src/i18n/tr.ts` (kaynak) + `src/i18n/en.ts`, tip güvenli anahtarlar (en.ts tr'nin tüm anahtarlarını
   içermek zorunda — TypeScript ile), parametreli metinler ve Türkçe/İngilizce çoğul kuralları; `LanguageProvider` + `useT()` hook'u
   (ThemeProvider kalıbı gibi, tercih `settings.language` = 'system' | 'tr' | 'en'; sistem dili için `expo-localization` — `npx expo install`).
@@ -296,6 +299,11 @@ Kullanıcı isteği: haftanın günlerine rutin ata, takvimde görünsün. (Gör
   eklenir ve arama her iki dilde çalışır. AI istekleri (rehber, yemek tahmini) seçili dilde yanıt istesin; rehber önbelleği dile göre ayrı tutulsun.
 - **Testler:** tr/en anahtar eşliği; `src/app` ve `src/components` içinde i18n dışında Türkçe karakterli sabit metin kalmadığını doğrulayan
   sezgisel test (izin listesiyle); yerel ayara göre sayı/tarih biçimlendirme; dil değişince hatırlatıcı yeniden kurulumu (saf kısım).
+
+> **Not (Görev 2.12 tamamlandı):** Altyapı `src/i18n/` (`tr.ts` kaynak, `en.ts` `Record<MsgKey, Msg>` ile TÜM anahtarları içermek zorunda; `{param}`, `{one, other}` çoğul + `count`; `index.ts` saf mantık: `translate/t/tOr`, `resolveLanguage`, `localeData`, `formatDecimal`; `labels.ts`: `muscleLabel/equipmentLabel/goalLabel/levelLabel/mealLabel/routineLabel`). `LanguageProvider` (`settings.language` = system|tr|en, `expo-localization`) + `useT()` (bileşenler `_('anahtar')`) ve modül düzeyi `t()` (lib). Ayarlar → Dil ve onboarding ilk ekran seçici; değişince tüm ekranlar anında yeniden çizilir, hatırlatıcılar yeniden kurulur (`buildReminderSchedule(s, plan, lang)` saf; `reminder-io` kayıtlı dili kendisi okur).
+> DB'de Türkçe anahtar KALIR (kas/ekipman/hedef/seviye/öğün/seed rutin adı/"Serbest Antrenman"), yalnızca gösterim çevrilir. Tablolar (SET_TYPES, EFFORT, RULE_TABLE, ACTIVITY, WEEK_TEMPLATES, EXERCISE_KINDS, FOOD_CATEGORIES) getter'lıdır. Sayı: TR 62,5 / EN 62.5; tarih/gün/ay adları `localeData`. progression gerekçeleri, nutrition gerekçe/kategori, cardio/rest/recovery/plates/diff/goals, backup/photo/AI hata metinleri çevrildi.
+> İçerik: `exercise-media.ts` → `steps: { tr, en }` (İngilizce kaynak git `b3a2f1c`'den; `kb-swing` İngilizcesi elle yazıldı), `muscleName`; yiyeceklere `nameEn` (`src/data/foods-en.ts`), arama iki dilde, kategori adları ve porsiyon etiketleri (`portionLabel`) çevrilir. AI rehberi/yemek tahmini seçili dilde istenir; DB v11: `exercise_guides` (exercise_id, lang) anahtarlı — rehber önbelleği dile göre ayrı (eski rehberler `tr`). Testler: `tests/i18n.test.ts` (anahtar/parametre/çoğul eşliği, Türkçe sabit metin taraması, biçimlendirme, etiketler, öneri/AI/hatırlatıcı, rehber önbelleği + migrasyon, yiyecek adları).
+> Bilinen sınırlar: kullanıcının girdiği metinler (rutin/antrenman adı, notlar, özel egzersiz) ve KAYITLI geçmiş metinler (öğün kaydının adı/porsiyonu, eski AI çıktıları) çevrilmez; egzersiz adları İngilizce kalır; iOS sistem izin penceresi metinleri (Info.plist) yerelleştirilmedi; tarih ayırıcı/saat 24 saat biçimi iki dilde aynı.
 
 ## Görev Havuzu (öncelik sırası; kullanıcı onayıyla seçilecek)
 - **Barkod okuma** (expo-camera; Open Food Facts ücretsiz API — kullanıcı verisi göndermeden ürün sorgusu) → beslenmeye hızlı ekleme.

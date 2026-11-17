@@ -25,29 +25,48 @@ import { describeCardioSet, formatClock, formatKm, formatMin, isTimeBased, parse
 import { haptic } from '@/lib/haptics';
 import { leave } from '@/lib/nav';
 import { EFFORT, effortLabel, estimate1RM } from '@/lib/progression';
+import { currentLocale } from '@/i18n';
+import { syncReminders } from '@/lib/reminder-io';
 import { SET_TYPES } from '@/lib/rest';
+import { useT } from '@/components/language-provider';
+import { muscleLabel, routineLabel } from '@/i18n/labels';
 
 export default function Session() {
+  const _ = useT();
   const t = useTheme();
   const sheet = useSheet();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, edit, fresh } = useLocalSearchParams<{ id: string; edit?: string; fresh?: string }>();
   const { data, db, reload } = useDbQuery((db) => getWorkoutDetail(db, Number(id)), [id]);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(edit === '1');
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
+  const isFresh = fresh === '1'; // "Geçmişe antrenman ekle" ile yeni oluşturuldu: hiç set girilmezse antrenman atılır
+  const seeded = useRef(false);
 
   // Geri tuşu / ekrandan çıkış: düzenleme açıksa boş setleri temizle ve başlık/notu kaydet (taslak kaybolmasın)
-  const latest = useRef({ editing: false, name: '', note: '', id: 0 });
+  const latest = useRef({ editing: false, name: '', note: '', id: 0, fresh: false });
   useEffect(() => {
-    latest.current = { editing, name, note, id: data?.workout.id ?? 0 };
+    latest.current = { editing, name, note, id: data?.workout.id ?? 0, fresh: isFresh };
   });
   useEffect(
     () => () => {
       const d = latest.current;
-      if (d.editing && d.id) finalizeHistoryEdit(db, d.id, { name: d.name, note: d.note || null }).catch(() => {});
+      if (d.editing && d.id) {
+        finalizeHistoryEdit(db, d.id, { name: d.name, note: d.note || null }, { dropIfEmpty: d.fresh })
+          .then(() => syncReminders(db))
+          .catch(() => {});
+      }
     },
     [db],
   );
+  // düzenleme modu doğrudan açıldıysa (yeni geçmiş antrenman) taslakları kayıtlı değerlerden doldur
+  useEffect(() => {
+    if (editing && data && !seeded.current) {
+      seeded.current = true;
+      setName(data.workout.name);
+      setNote(data.workout.note ?? '');
+    }
+  }, [editing, data]);
 
   if (!data) return null;
   const { workout, exercises } = data;
@@ -65,17 +84,23 @@ export default function Session() {
 
   /** Düzenlemeyi bitirir: başlık/not kaydı + boş set temizliği + PR yeniden hesabı. */
   const finishEditing = async () => {
-    await finalizeHistoryEdit(db, workout.id, { name, note: note || null });
+    const r = await finalizeHistoryEdit(db, workout.id, { name, note: note || null }, { dropIfEmpty: isFresh });
+    syncReminders(db);
+    if (r.deleted) {
+      latest.current.editing = false;
+      leave();
+      return;
+    }
     await reload();
   };
 
   const onDelete = () =>
     sheet.actions({
-      title: 'Antrenmanı sil?',
-      message: 'Bu işlem geri alınamaz.',
+      title: _('session.delete_workout'),
+      message: _('session.this_can_t_be_undone'),
       actions: [
         {
-          label: 'Sil',
+          label: _('common.delete'),
           icon: 'trash',
           style: 'destructive',
           onPress: async () => {
@@ -88,11 +113,11 @@ export default function Session() {
 
   const onRemoveExercise = (weId: number, exName: string) =>
     sheet.actions({
-      title: `${exName} çıkarılsın mı?`,
-      message: 'Egzersizin bu antrenmandaki tüm setleri silinir. Rekorlar yeniden hesaplanır.',
+      title: _('session.remove', { exName: exName }),
+      message: _('session.all_of_this_exercise_s'),
       actions: [
         {
-          label: 'Egzersizi çıkar',
+          label: _('session.remove_exercise'),
           icon: 'trash',
           style: 'destructive',
           onPress: async () => {
@@ -110,11 +135,11 @@ export default function Session() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
           <View style={{ flex: 1 }}>
             <T variant="overline" secondary>
-              {new Date(workout.started_at).toLocaleString('tr-TR', { dateStyle: 'long', timeStyle: 'short' })}
+              {new Date(workout.started_at).toLocaleString(currentLocale(), { dateStyle: 'long', timeStyle: 'short' })}
             </T>
           </View>
           <Button
-            title={editing ? 'Bitti' : 'Düzenle'}
+            title={editing ? _('session.done') : _('common.edit')}
             icon={editing ? 'check' : 'edit'}
             kind={editing ? 'primary' : 'secondary'}
             small
@@ -134,26 +159,24 @@ export default function Session() {
             value={name}
             onChangeText={setName}
             onEndEditing={saveMeta}
-            placeholder="Antrenman adı"
+            placeholder={_('session.workout_name')}
             placeholderTextColor={t.textMuted}
-            accessibilityLabel="Antrenman adı"
+            accessibilityLabel={_('session.workout_name')}
             style={[styles.titleInput, { backgroundColor: t.surfaceRaised, color: t.text }]}
           />
         ) : (
-          <T variant="display">{workout.name}</T>
+          <T variant="display">{routineLabel(workout.name)}</T>
         )}
 
         <Card style={{ marginTop: Spacing.lg }}>
           <View style={{ flexDirection: 'row' }}>
-            <Stat label="Süre" value={formatMinutes((workout.finished_at ?? workout.started_at) - workout.started_at)} />
-            <Stat label="Set" value={String(sets.length)} />
-            <Stat label="Egzersiz" value={String(exercises.length)} />
-            {cardioSec > 0 && <Stat label="Kardiyo" value={formatMin(cardioSec / 60)} />}
-            {avgRest != null && <Stat label="Ort. mola" value={formatDuration(avgRest * 1000)} />}
+            <Stat label={_('common.duration')} value={formatMinutes((workout.finished_at ?? workout.started_at) - workout.started_at)} />
+            <Stat label={_('common.sets')} value={String(sets.length)} />
+            <Stat label={_('session.exercises')} value={String(exercises.length)} />
+            {cardioSec > 0 && <Stat label={_('common.cardio2')} value={formatMin(cardioSec / 60)} />}
+            {avgRest != null && <Stat label={_('session.avg_rest')} value={formatDuration(avgRest * 1000)} />}
           </View>
-          <T variant="caption" muted style={{ marginTop: 6 }}>
-            Isınma setleri hariç
-          </T>
+          <T variant="caption" muted style={{ marginTop: 6 }}>{_('session.warm_up_sets_excluded')}</T>
         </Card>
 
         {editing ? (
@@ -161,18 +184,16 @@ export default function Session() {
             value={note}
             onChangeText={setNote}
             onEndEditing={saveMeta}
-            placeholder="Antrenman notu (isteğe bağlı)"
+            placeholder={_('session.workout_note_optional')}
             placeholderTextColor={t.textMuted}
-            accessibilityLabel="Antrenman notu"
+            accessibilityLabel={_('session.workout_note')}
             multiline
             style={[styles.noteInput, { backgroundColor: t.surfaceRaised, color: t.text }]}
           />
         ) : (
           !!workout.note && (
             <Card style={{ marginTop: Spacing.md }}>
-              <T variant="label" secondary>
-                Not
-              </T>
+              <T variant="label" secondary>{_('session.note')}</T>
               <T variant="body">{workout.note}</T>
             </Card>
           )
@@ -189,13 +210,13 @@ export default function Session() {
                   <View style={{ flex: 1 }}>
                     <T variant="heading">{ex.name}</T>
                     <T variant="caption" secondary>
-                      {ex.muscle}
-                      {best > 0 ? ` · tahmini 1RM ${formatWeight(Math.round(best * 2) / 2)} kg` : ''}
+                      {muscleLabel(ex.muscle)}
+                      {best > 0 ? _('session.estimated_1rm_kg', { v: formatWeight(Math.round(best * 2) / 2) }) : ''}
                     </T>
                   </View>
                 </PressableScale>
                 {editing && (
-                  <PressableScale onPress={() => onRemoveExercise(ex.id, ex.name)} accessibilityLabel={`${ex.name} egzersizini çıkar`} hitSlop={8} style={[styles.miniBtn, { backgroundColor: t.dangerSoft }]}>
+                  <PressableScale onPress={() => onRemoveExercise(ex.id, ex.name)} accessibilityLabel={_('session.remove2', { name: ex.name })} hitSlop={8} style={[styles.miniBtn, { backgroundColor: t.dangerSoft }]}>
                     <Icon name="trash" size={16} color={t.danger} />
                   </PressableScale>
                 )}
@@ -218,12 +239,10 @@ export default function Session() {
                     haptic.tap();
                     await reload();
                   }}
-                  accessibilityLabel={`${ex.name} için set ekle`}
+                  accessibilityLabel={_('session.add_a_set_for', { name: ex.name })}
                   style={[styles.addSet, { backgroundColor: t.surfaceRaised }]}>
                   <Icon name="add" size={13} color={t.textSecondary} />
-                  <T variant="label" secondary>
-                    Set ekle
-                  </T>
+                  <T variant="label" secondary>{_('common.add_set')}</T>
                 </PressableScale>
               )}
             </Card>
@@ -231,15 +250,16 @@ export default function Session() {
         })}
 
         {editing && (
-          <Button title="Egzersiz ekle" icon="addCircle" kind="secondary" onPress={() => router.push(`/exercise-picker?historyWorkoutId=${workout.id}`)} style={{ marginTop: Spacing.lg }} />
+          <Button title={_('common.add_exercise')} icon="addCircle" kind="secondary" onPress={() => router.push(`/exercise-picker?historyWorkoutId=${workout.id}`)} style={{ marginTop: Spacing.lg }} />
         )}
-        <Button title="Antrenmanı sil" kind="danger" icon="trash" onPress={onDelete} style={{ marginTop: Spacing.xl }} />
+        <Button title={_('session.delete_workout2')} kind="danger" icon="trash" onPress={onDelete} style={{ marginTop: Spacing.xl }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 function ViewSetRow({ set: s, label, kind }: { set: SetRow; label: string; kind: string }) {
+  const _ = useT();
   const t = useTheme();
   const warm = s.set_type === 'warmup';
   const typeInfo = SET_TYPES.find((x) => x.key === s.set_type);
@@ -253,8 +273,8 @@ function ViewSetRow({ set: s, label, kind }: { set: SetRow; label: string; kind:
           {isTimeBased(kind)
             ? describeCardioSet(s, kind as 'cardio' | 'timed')
             : kind === 'bodyweight'
-              ? `${s.weight ? `+${formatWeight(s.weight)} kg × ` : ''}${s.reps ?? 0} tekrar`
-              : `${s.weight ? `${formatWeight(s.weight)} kg` : 'Vücut'} × ${s.reps ?? 0}`}
+              ? _('session.reps', { v: s.weight ? `+${formatWeight(s.weight)} kg × ` : '', v2: s.reps ?? 0 })
+              : `${s.weight ? `${formatWeight(s.weight)} kg` : _('common.bodyweight')} × ${s.reps ?? 0}`}
         </T>
         {s.set_type !== 'normal' && s.set_type !== 'warmup' && typeInfo && (
           <Badge label={typeInfo.label} tint={s.set_type === 'drop' ? t.violet : t.danger} bg={s.set_type === 'drop' ? t.violetSoft : t.dangerSoft} />
@@ -290,6 +310,7 @@ function EditSetRow({
   sheet: ReturnType<typeof useSheet>;
   onChanged: () => Promise<unknown>;
 }) {
+  const _ = useT();
   const t = useTheme();
   const [w, setW] = useState(s.weight != null ? formatWeight(s.weight) : '');
   const [r, setR] = useState(s.reps != null ? String(s.reps) : '');
@@ -317,7 +338,7 @@ function EditSetRow({
 
   const pickType = () =>
     sheet.actions({
-      title: 'Set tipi',
+      title: _('common.set_type'),
       actions: SET_TYPES.map<SheetAction>((x) => ({
         label: x.label,
         style: x.key === s.set_type ? 'primary' : 'default',
@@ -330,7 +351,7 @@ function EditSetRow({
 
   const pickEffort = () =>
     sheet.actions({
-      title: 'Bu set nasıl geçti?',
+      title: _('common.how_did_this_set_go'),
       actions: [
         ...EFFORT.map<SheetAction>((e) => ({
           label: `${e.label} · ${e.hint}`,
@@ -343,7 +364,7 @@ function EditSetRow({
         ...(s.rir != null
           ? [
               {
-                label: 'Temizle',
+                label: _('common.clear'),
                 onPress: async () => {
                   await editHistorySet(db, s.id, { rir: null });
                   await onChanged();
@@ -356,11 +377,11 @@ function EditSetRow({
 
   const remove = () =>
     sheet.actions({
-      title: 'Set silinsin mi?',
-      message: 'Rekorlar yeniden hesaplanır.',
+      title: _('session.delete_set'),
+      message: _('session.records_are_recalculated'),
       actions: [
         {
-          label: 'Seti sil',
+          label: _('common.delete_set'),
           icon: 'trash',
           style: 'destructive',
           onPress: async () => {
@@ -374,7 +395,7 @@ function EditSetRow({
   return (
     <View style={[styles.editRow, { backgroundColor: t.surfaceRaised }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-        <PressableScale onPress={pickType} accessibilityLabel={`Set ${label} tipini değiştir`} style={[styles.typeBtn, { backgroundColor: t.surface }]}>
+        <PressableScale onPress={pickType} accessibilityLabel={_('session.change_type_of_set', { label: label })} style={[styles.typeBtn, { backgroundColor: t.surface }]}>
           <T variant="label" color={warm ? t.gold : t.textSecondary} style={{ fontFamily: Font.heavy }}>
             {s.is_pr ? '🏆' : typeInfo?.short || label}
           </T>
@@ -385,11 +406,11 @@ function EditSetRow({
               value={dur}
               onChangeText={setDur}
               onEndEditing={saveValues}
-              placeholder={isCardio ? 'dk:sn' : 'sn'}
+              placeholder={isCardio ? _('session.min_sec') : _('session.sec')}
               placeholderTextColor={t.textMuted}
               keyboardType="numbers-and-punctuation"
               selectTextOnFocus
-              accessibilityLabel={`Set ${label} süre`}
+              accessibilityLabel={_('session.set_duration', { label: label })}
               style={[styles.input, { backgroundColor: t.surface, color: t.text }]}
             />
             {isCardio && (
@@ -402,18 +423,18 @@ function EditSetRow({
                   placeholderTextColor={t.textMuted}
                   keyboardType="decimal-pad"
                   selectTextOnFocus
-                  accessibilityLabel={`Set ${label} mesafe`}
+                  accessibilityLabel={_('session.set_distance', { label: label })}
                   style={[styles.input, { backgroundColor: t.surface, color: t.text }]}
                 />
                 <TextInput
                   value={lvl}
                   onChangeText={setLvl}
                   onEndEditing={saveValues}
-                  placeholder="eğim"
+                  placeholder={_('session.incline')}
                   placeholderTextColor={t.textMuted}
                   keyboardType="decimal-pad"
                   selectTextOnFocus
-                  accessibilityLabel={`Set ${label} eğim veya seviye`}
+                  accessibilityLabel={_('session.set_incline_or_level', { label: label })}
                   style={[styles.input, { backgroundColor: t.surface, color: t.text }]}
                 />
               </>
@@ -425,11 +446,11 @@ function EditSetRow({
           value={w}
           onChangeText={setW}
           onEndEditing={saveValues}
-          placeholder="kg"
+          placeholder={_('common.kg')}
           placeholderTextColor={t.textMuted}
           keyboardType="decimal-pad"
           selectTextOnFocus
-          accessibilityLabel={`Set ${label} ağırlık`}
+          accessibilityLabel={_('session.set_weight', { label: label })}
           style={[styles.input, { backgroundColor: t.surface, color: t.text }]}
         />
         <T variant="label" muted>
@@ -443,19 +464,19 @@ function EditSetRow({
           placeholderTextColor={t.textMuted}
           keyboardType="number-pad"
           selectTextOnFocus
-          accessibilityLabel={`Set ${label} tekrar`}
+          accessibilityLabel={_('session.set_reps', { label: label })}
           style={[styles.input, { backgroundColor: t.surface, color: t.text }]}
         />
           </>
         )}
         {!warm && !timeBased && (
-          <PressableScale onPress={pickEffort} accessibilityLabel="Zorluğu değiştir" style={[styles.effortBtn, { backgroundColor: t.surface }]}>
+          <PressableScale onPress={pickEffort} accessibilityLabel={_('session.change_difficulty')} style={[styles.effortBtn, { backgroundColor: t.surface }]}>
             <T variant="caption" color={s.rir != null ? t.text : t.textMuted} style={{ fontFamily: Font.bold, fontSize: 11 }}>
-              {effortLabel(s.rir) ?? 'Zorluk?'}
+              {effortLabel(s.rir) ?? _('common.difficulty')}
             </T>
           </PressableScale>
         )}
-        <PressableScale onPress={remove} accessibilityLabel={`Set ${label} sil`} hitSlop={8} style={styles.miniBtn}>
+        <PressableScale onPress={remove} accessibilityLabel={_('session.delete_set2', { label: label })} hitSlop={8} style={styles.miniBtn}>
           <Icon name="trash" size={16} color={t.danger} />
         </PressableScale>
       </View>
@@ -467,9 +488,9 @@ function EditSetRow({
           await onChanged();
         }}
         maxLength={140}
-        placeholder="Set notu (isteğe bağlı)"
+        placeholder={_('session.set_note_optional')}
         placeholderTextColor={t.textMuted}
-        accessibilityLabel={`Set ${label} notu`}
+        accessibilityLabel={_('session.set_note', { label: label })}
         style={[styles.noteSmall, { backgroundColor: t.surface, color: t.text }]}
       />
     </View>

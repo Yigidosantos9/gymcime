@@ -22,20 +22,25 @@ import { haptic } from '@/lib/haptics';
 import { syncReminders } from '@/lib/reminder-io';
 import { formatRest } from '@/lib/rest';
 import { goHome } from '@/lib/nav';
+import { useLanguage, useT } from '@/components/language-provider';
+import { currentLocale, decimalSep } from '@/i18n';
+import { goalLabel } from '@/i18n/labels';
 
 const REST_OPTIONS = [60, 90, 120, 150, 180];
-const GOALS = ['Kas kazanmak', 'Güçlenmek', 'Yağ yakmak', 'Formda kalmak'];
-const THEMES: { key: ThemePreference; label: string; icon: IconName }[] = [
-  { key: 'dark', label: 'Koyu', icon: 'moon' },
-  { key: 'light', label: 'Açık', icon: 'sun' },
-  { key: 'system', label: 'Sistem', icon: 'phone' },
-];
+const GOALS = ['Kas kazanmak', 'Güçlenmek', 'Yağ yakmak', 'Formda kalmak']; // DB anahtarları (gösterimde goalLabel)
 
 export default function Settings() {
+  const _ = useT();
+  const { preference: langPref, setPreference: setLangPref, reload: reloadLang } = useLanguage();
+  const THEMES: { key: ThemePreference; label: string; icon: IconName }[] = [
+    { key: 'dark', label: _('settings.dark'), icon: 'moon' },
+    { key: 'light', label: _('settings.light'), icon: 'sun' },
+    { key: 'system', label: _('settings.system'), icon: 'phone' },
+  ];
   const t = useTheme();
   const db = useSQLiteContext();
   const sheet = useSheet();
-  const { preference, setPreference } = useThemeContext();
+  const { preference, setPreference, reload: reloadTheme } = useThemeContext();
   const [profile, setProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
@@ -52,15 +57,16 @@ export default function Settings() {
 
   const reset = () =>
     sheet.actions({
-      title: 'Tüm veriler silinsin mi?',
-      message: 'Antrenmanlar, rutinler ve profilin kalıcı olarak silinir.',
+      title: _('settings.delete_all_data'),
+      message: _('settings.workouts_routines_and_your_profile'),
       actions: [
         {
-          label: 'Her şeyi sil',
+          label: _('settings.delete_everything'),
           icon: 'trash',
           style: 'destructive',
           onPress: async () => {
             await deleteAllData(db);
+            await Promise.all([reloadLang(), reloadTheme()]);
             await clearApiKey().catch(() => {});
             await syncReminders(db); // ayarlar silindi → planlı bildirimler de kalkar
             haptic.warning();
@@ -73,7 +79,7 @@ export default function Settings() {
 
   return (
     <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 60 }}>
-      <SectionHeader title="Görünüm" />
+      <SectionHeader title={_('settings.appearance')} />
       <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
         {THEMES.map((th) => {
           const active = preference === th.key;
@@ -91,33 +97,55 @@ export default function Settings() {
         })}
       </View>
 
-      <SectionHeader title="Profil" />
+      <SectionHeader title={_('settings.language')} />
+      <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
+        {(
+          [
+            { key: 'tr', label: _('settings.language_tr') },
+            { key: 'en', label: _('settings.language_en') },
+            { key: 'system', label: _('settings.language_system') },
+          ] as const
+        ).map((l) => {
+          const active = langPref === l.key;
+          return (
+            <PressableScale
+              key={l.key}
+              onPress={() => setLangPref(l.key)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              style={[styles.themeBtn, { backgroundColor: active ? t.primarySoft : t.surface, borderColor: active ? t.primary : t.border }]}>
+              <T variant="label" color={active ? t.primary : t.textSecondary}>
+                {l.label}
+              </T>
+            </PressableScale>
+          );
+        })}
+      </View>
+      <T variant="caption" muted style={{ marginTop: Spacing.sm }}>
+        {_('settings.language_hint')}
+      </T>
+
+      <SectionHeader title={_('settings.profile')} />
       <Card style={{ gap: Spacing.md }}>
-        <T variant="label" secondary>
-          Adın
-        </T>
+        <T variant="label" secondary>{_('common.your_name')}</T>
         <TextInput
           value={profile.name}
           onChangeText={(name) => setProfile({ ...profile, name })}
           onEndEditing={() => update({})}
           style={[styles.input, { backgroundColor: t.surfaceRaised, color: t.text }]}
         />
-        <T variant="label" secondary>
-          Hedef
-        </T>
+        <T variant="label" secondary>{_('common.target')}</T>
         <View style={styles.wrap}>
           {GOALS.map((g) => (
-            <Chip key={g} label={g} active={profile.goal === g} onPress={() => update({ goal: g })} />
+            <Chip key={g} label={goalLabel(g)} active={profile.goal === g} onPress={() => update({ goal: g })} />
           ))}
         </View>
-        <T variant="label" secondary>
-          Haftalık hedef
-        </T>
+        <T variant="label" secondary>{_('settings.weekly_goal')}</T>
         <View style={styles.wrap}>
           {WEEK_DAYS.map((d) => (
             <Chip
               key={d}
-              label={`${d} gün${notRecommended(d) ? ' · önerilmez' : ''}`}
+              label={_('settings.days', { count: d, v: notRecommended(d) ? _('settings.not_recommended') : '' })}
               tint={notRecommended(d) ? t.gold : undefined}
               active={profile.daysPerWeek === d}
               onPress={() => update({ daysPerWeek: d })}
@@ -131,11 +159,9 @@ export default function Settings() {
         )}
       </Card>
 
-      <SectionHeader title="Mola" />
+      <SectionHeader title={_('settings.rest')} />
       <Card style={{ gap: Spacing.md }}>
-        <T variant="label" secondary>
-          Genel varsayılan dinlenme
-        </T>
+        <T variant="label" secondary>{_('settings.general_default_rest')}</T>
         <View style={styles.wrap}>
           {REST_OPTIONS.map((s) => (
             <Chip key={s} label={formatRest(s)} active={profile.restSeconds === s} onPress={() => update({ restSeconds: s })} />
@@ -143,54 +169,42 @@ export default function Settings() {
         </View>
         <View style={styles.toggleRow}>
           <View style={{ flex: 1 }}>
-            <T variant="label">Mola bitince ses</T>
-            <T variant="caption" muted>
-              Telefon sessizdeyken çalmaz, sadece titrer
-            </T>
+            <T variant="label">{_('settings.sound_when_rest_ends')}</T>
+            <T variant="caption" muted>{_('settings.doesn_t_play_when_the')}</T>
           </View>
           <Switch value={profile.soundOn} onValueChange={(v) => update({ soundOn: v })} trackColor={{ true: t.primary, false: t.surfacePressed }} />
         </View>
         <View style={styles.toggleRow}>
           <View style={{ flex: 1 }}>
-            <T variant="label">Titreşim</T>
-            <T variant="caption" muted>
-              Son 3 saniye ve mola bitişinde
-            </T>
+            <T variant="label">{_('settings.vibration')}</T>
+            <T variant="caption" muted>{_('settings.during_the_last_3_seconds')}</T>
           </View>
           <Switch value={profile.hapticOn} onValueChange={(v) => update({ hapticOn: v })} trackColor={{ true: t.primary, false: t.surfacePressed }} />
         </View>
-        <T variant="caption" muted>
-          Egzersizlerin kendi varsayılanı varsa o kullanılır (ör. squat 3 dk, curl 75 sn). Egzersiz detayından veya antrenman sırasında değiştirebilirsin. Isınma setlerinde mola yarıya iner, drop setlerde mola olmaz.
-        </T>
+        <T variant="caption" muted>{_('settings.if_an_exercise_has_its')}</T>
       </Card>
 
-      <SectionHeader title="Kas toparlanması" />
+      <SectionHeader title={_('settings.muscle_recovery')} />
       <Card style={{ gap: Spacing.md }}>
-        <T variant="label" secondary>
-          Bir kas grubunu tekrar çalıştırmadan önce önerilen dinlenme
-        </T>
+        <T variant="label" secondary>{_('settings.recommended_rest_before_training_a')}</T>
         <View style={styles.wrap}>
           {RECOVERY_OPTIONS.map((d) => (
-            <Chip key={d} label={`${d} gün`} active={profile.recoveryDays === d} onPress={() => update({ recoveryDays: d })} />
+            <Chip key={d} label={_('settings.days2', { count: d })} active={profile.recoveryDays === d} onPress={() => update({ recoveryDays: d })} />
           ))}
         </View>
-        <T variant="caption" muted>
-          Ana sayfadaki toparlanma kartı ve sıradaki antrenman önerisi buna göre çalışır. Çoğu kişi için 2 gün (48 saat) iyi bir başlangıç.
-        </T>
+        <T variant="caption" muted>{_('settings.the_recovery_card_on_the')}</T>
       </Card>
 
-      <SectionHeader title="Ağırlık önerisi" />
+      <SectionHeader title={_('settings.weight_suggestions')} />
       <Card style={{ gap: Spacing.md }}>
-        <T variant="caption" muted>
-          Öneriler bu adımlara yuvarlanır. Salonundaki en küçük plaka/dambıl farkına göre seç.
-        </T>
-        <T variant="label">Set düzeni</T>
+        <T variant="caption" muted>{_('settings.suggestions_are_rounded_to_these')}</T>
+        <T variant="label">{_('settings.set_layout')}</T>
         <View style={styles.wrap}>
           {(
             [
-              ['auto', 'Otomatik'],
-              ['ramp', 'Piramit (artan)'],
-              ['straight', 'Sabit'],
+              ['auto', _('settings.style_auto')],
+              ['ramp', _('settings.style_ramp')],
+              ['straight', _('settings.style_straight')],
             ] as const
           ).map(([k, label]) => (
             <Chip key={k} label={label} active={profile.setStyle === k} onPress={() => update({ setStyle: k })} />
@@ -198,38 +212,36 @@ export default function Settings() {
         </View>
         <T variant="caption" muted>
           {profile.setStyle === 'auto'
-            ? 'Geçmişinden öğrenir: setlerde ağırlığı artırıyorsan piramit, sabit tutuyorsan sabit planlar. Veri yoksa piramit.'
+            ? _('settings.learns_from_your_history_pyramid')
             : profile.setStyle === 'ramp'
-              ? 'İlk set hafif (4 tekrar yedekte), orta set orta, son set en ağır ve en zor (1 tekrar yedekte).'
-              : 'Tüm çalışma setleri aynı ağırlıkta, 2 tekrar yedekte.'}
+              ? _('settings.first_set_light_4_reps')
+              : _('settings.all_working_sets_at_the')}
         </T>
-        <IncRow label="Halter" value={profile.incBarbell} options={[1.25, 2.5, 5]} onPick={(v) => update({ incBarbell: v })} />
-        <IncRow label="Dambıl / Kettlebell" value={profile.incDumbbell} options={[1, 2, 2.5]} onPick={(v) => update({ incDumbbell: v })} />
-        <IncRow label="Makine / Kablo" value={profile.incMachine} options={[2.5, 5, 7]} onPick={(v) => update({ incMachine: v })} />
+        <IncRow label={_('settings.barbell')} value={profile.incBarbell} options={[1.25, 2.5, 5]} onPick={(v) => update({ incBarbell: v })} />
+        <IncRow label={_('settings.dumbbell_kettlebell')} value={profile.incDumbbell} options={[1, 2, 2.5]} onPick={(v) => update({ incDumbbell: v })} />
+        <IncRow label={_('settings.machine_cable')} value={profile.incMachine} options={[2.5, 5, 7]} onPick={(v) => update({ incMachine: v })} />
       </Card>
 
-      <SectionHeader title="Haftalık plan" />
-      <Button title="Haftalık planı düzenle" icon="history" kind="secondary" onPress={() => router.push('/week-plan')} />
+      <SectionHeader title={_('common.weekly_plan')} />
+      <Button title={_('settings.edit_weekly_plan')} icon="history" kind="secondary" onPress={() => router.push('/week-plan')} />
 
-      <SectionHeader title="Plaka hesaplayıcı" />
+      <SectionHeader title={_('common.plate_calculator')} />
       <Card style={{ gap: Spacing.md }}>
-        <T variant="caption" muted>
-          Halter egzersizlerinde ağırlık sütunu başlığındaki halter simgesine dokununca her tarafa takılacak plakalar hesaplanır.
-        </T>
-        <T variant="label">Bar ağırlığı</T>
+        <T variant="caption" muted>{_('settings.tap_the_barbell_icon_in')}</T>
+        <T variant="label">{_('settings.bar_weight')}</T>
         <View style={styles.wrap}>
           {BAR_OPTIONS.map((b) => (
-            <Chip key={b} label={`${b} kg`} active={profile.barWeight === b} onPress={() => update({ barWeight: b })} />
+            <Chip key={b} label={_('common.kg3', { b: b })} active={profile.barWeight === b} onPress={() => update({ barWeight: b })} />
           ))}
         </View>
-        <T variant="label">Salondaki plakalar (her biri çift)</T>
+        <T variant="label">{_('settings.plates_at_your_gym_each')}</T>
         <View style={styles.wrap}>
           {ALL_PLATES.map((p) => {
             const on = profile.plates.includes(p);
             return (
               <Chip
                 key={p}
-                label={`${String(p).replace('.', ',')} kg`}
+                label={_('common.kg2', { v: String(p).replace('.', decimalSep()) })}
                 active={on}
                 onPress={() => {
                   // en az bir plaka kalsın
@@ -248,15 +260,16 @@ export default function Settings() {
 
       <DataSettings />
 
-      <Button title="Tüm verileri sil" kind="danger" icon="trash" onPress={reset} style={{ marginTop: Spacing.xxl }} />
-      <T variant="caption" muted style={{ textAlign: 'center', marginTop: Spacing.md }}>
-        gymcime · verilerin yalnızca bu cihazda saklanır
-      </T>
+      <Button title={_('settings.delete_all_data2')} kind="danger" icon="trash" onPress={reset} style={{ marginTop: Spacing.xxl }} />
+      <T variant="caption" muted style={{ textAlign: 'center', marginTop: Spacing.md }}>{_('settings.gymcime_your_data_is_stored')}</T>
     </ScrollView>
   );
 }
 
 function DataSettings() {
+  const _ = useT();
+  const { reload: reloadLang } = useLanguage();
+  const { reload: reloadTheme } = useThemeContext();
   const db = useSQLiteContext();
   const sheet = useSheet();
   const t = useTheme();
@@ -265,7 +278,7 @@ function DataSettings() {
 
   const fail = (e: unknown) => {
     haptic.warning();
-    setMsg({ ok: false, text: e instanceof BackupError ? e.userMessage : `İşlem başarısız: ${e instanceof Error ? e.message : 'bilinmeyen hata'}` });
+    setMsg({ ok: false, text: e instanceof BackupError ? e.userMessage : _('settings.operation_failed', { v: e instanceof Error ? e.message : _('common.unknown_error') }) });
   };
 
   const doExport = async () => {
@@ -274,7 +287,7 @@ function DataSettings() {
     setMsg(null);
     try {
       await shareBackup(db);
-      setMsg({ ok: true, text: 'Yedek hazırlandı. Paylaşım sayfasından Dosyalar\'a kaydedebilirsin.' });
+      setMsg({ ok: true, text: _('settings.backup_ready_you_can_save') });
     } catch (e) {
       fail(e);
     } finally {
@@ -290,18 +303,19 @@ function DataSettings() {
       const backup = await pickBackup();
       if (!backup) return;
       const c = backupCounts(backup);
-      const when = backup.exportedAt ? new Date(backup.exportedAt).toLocaleDateString('tr-TR', { dateStyle: 'long' }) : 'bilinmeyen tarih';
+      const when = backup.exportedAt ? new Date(backup.exportedAt).toLocaleDateString(currentLocale(), { dateStyle: 'long' }) : _('common.unknown_date');
       sheet.actions({
-        title: 'Yedek geri yüklensin mi?',
-        message: `${when} tarihli yedek: ${c.workouts} antrenman, ${c.sets} set, ${c.routines} rutin, ${c.foodLogs} öğün kaydı, ${c.bodyWeights} kilo ölçümü. Şu anki TÜM verilerin silinip yerine bunlar yazılır; geri alınamaz.`,
+        title: _('settings.restore_backup'),
+        message: _('settings.backup_from_workouts_sets_routines', { when: when, workouts: c.workouts, sets: c.sets, routines: c.routines, foodLogs: c.foodLogs, bodyWeights: c.bodyWeights }),
         actions: [
           {
-            label: 'Mevcut verinin yerine yükle',
+            label: _('settings.replace_current_data'),
             icon: 'restart',
             style: 'destructive',
             onPress: async () => {
               try {
                 await importBackup(db, backup);
+                await Promise.all([reloadLang(), reloadTheme()]);
                 await syncReminders(db); // içe aktarılan ayar + plana göre bildirimleri yeniden kur
                 haptic.success();
                 goHome();
@@ -321,13 +335,11 @@ function DataSettings() {
 
   return (
     <>
-      <SectionHeader title="Veri" />
+      <SectionHeader title={_('settings.data')} />
       <Card style={{ gap: Spacing.md }}>
-        <T variant="caption" muted>
-          Tüm antrenman, rutin, beslenme ve kilo verini tek bir JSON dosyasına yedekle; telefon değiştirirsen ya da silersen geri yükle. API anahtarı yedeğe dahil edilmez.
-        </T>
-        <Button title="Yedeği dışa aktar" icon="arrowUp" kind="secondary" onPress={doExport} loading={busy === 'export'} disabled={busy != null} />
-        <Button title="Yedekten geri yükle" icon="restart" kind="ghost" onPress={doImport} loading={busy === 'import'} disabled={busy != null} />
+        <T variant="caption" muted>{_('settings.back_up_all_your_workout')}</T>
+        <Button title={_('settings.export_backup')} icon="arrowUp" kind="secondary" onPress={doExport} loading={busy === 'export'} disabled={busy != null} />
+        <Button title={_('settings.restore_from_backup')} icon="restart" kind="ghost" onPress={doImport} loading={busy === 'import'} disabled={busy != null} />
         {msg && (
           <T variant="label" color={msg.ok ? t.success : t.danger}>
             {msg.text}
@@ -339,6 +351,7 @@ function DataSettings() {
 }
 
 function AiSettings() {
+  const _ = useT();
   const t = useTheme();
   const db = useSQLiteContext();
   const sheet = useSheet();
@@ -366,11 +379,11 @@ function AiSettings() {
 
   const remove = () =>
     sheet.actions({
-      title: 'API anahtarı silinsin mi?',
-      message: 'Anahtar bu telefondan silinir. Kaydedilmiş rehberler kalır.',
+      title: _('settings.delete_api_key'),
+      message: _('settings.the_key_is_removed_from'),
       actions: [
         {
-          label: 'Anahtarı sil',
+          label: _('settings.delete_key'),
           icon: 'trash',
           style: 'destructive',
           onPress: async () => {
@@ -387,10 +400,10 @@ function AiSettings() {
     setResult(null);
     try {
       await testConnection();
-      setResult({ ok: true, text: 'Bağlantı başarılı.' });
+      setResult({ ok: true, text: _('settings.connection_successful') });
       haptic.success();
     } catch (e) {
-      setResult({ ok: false, text: e instanceof AiError ? e.userMessage : 'Bağlantı testi başarısız.' });
+      setResult({ ok: false, text: e instanceof AiError ? e.userMessage : _('settings.connection_test_failed') });
     } finally {
       setTesting(false);
     }
@@ -398,9 +411,9 @@ function AiSettings() {
 
   const test = () =>
     sheet.actions({
-      title: 'Bağlantı test edilsin mi?',
-      message: 'Çok küçük bir istek gönderilir. Hesabından çok az (bir kuruştan az) ücret düşer.',
-      actions: [{ label: 'Testi başlat', icon: 'bolt', style: 'primary', onPress: runTest }],
+      title: _('settings.test_the_connection'),
+      message: _('settings.a_tiny_request_is_sent'),
+      actions: [{ label: _('settings.run_test'), icon: 'bolt', style: 'primary', onPress: runTest }],
     });
 
   const pickPref = async (p: ModelPref) => {
@@ -412,23 +425,21 @@ function AiSettings() {
 
   return (
     <>
-      <SectionHeader title="Yapay zeka" />
+      <SectionHeader title={_('settings.artificial_intelligence')} />
       <Card style={{ gap: Spacing.md }}>
         <View style={styles.toggleRow}>
           <View style={[styles.aiDot, { backgroundColor: saved ? t.success : t.textMuted }]} />
           <T variant="label" style={{ flex: 1 }}>
-            {saved ? 'API anahtarı kayıtlı' : 'API anahtarı yok'}
+            {saved ? _('settings.api_key_saved') : _('settings.no_api_key')}
           </T>
-          {saved && <Button title="Sil" kind="danger" small onPress={remove} />}
+          {saved && <Button title={_('common.delete')} kind="danger" small onPress={remove} />}
         </View>
-        <T variant="caption" muted>
-          Anahtar yalnızca bu telefonun güvenli deposunda saklanır (Anthropic hesabına ait, uygulamanın koduna yazılmaz). Yapay zeka özellikleri anahtar olmadan çalışmaz; diğer her şey çalışır.
-        </T>
+        <T variant="caption" muted>{_('settings.the_key_is_stored_only')}</T>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TextInput
             value={draft}
             onChangeText={setDraft}
-            placeholder={saved ? 'Yeni anahtar ile değiştir' : 'sk-ant-...'}
+            placeholder={saved ? _('settings.replace_with_a_new_key') : 'sk-ant-...'}
             placeholderTextColor={t.textMuted}
             secureTextEntry={!show}
             autoCapitalize="none"
@@ -441,24 +452,22 @@ function AiSettings() {
             <Icon name={show ? 'close' : 'search'} size={16} color={t.textSecondary} />
           </PressableScale>
         </View>
-        <Button title="Anahtarı kaydet" icon="check" kind="secondary" onPress={save} disabled={draft.trim().length < 10} />
-        {saved && <Button title="Bağlantıyı test et" icon="bolt" kind="ghost" onPress={test} loading={testing} />}
+        <Button title={_('settings.save_key')} icon="check" kind="secondary" onPress={save} disabled={draft.trim().length < 10} />
+        {saved && <Button title={_('settings.test_connection')} icon="bolt" kind="ghost" onPress={test} loading={testing} />}
         {result && (
           <T variant="label" color={result.ok ? t.success : t.danger}>
             {result.text}
           </T>
         )}
-        <T variant="label" secondary>
-          Model
-        </T>
+        <T variant="label" secondary>{_('settings.model')}</T>
         <View style={styles.wrap}>
-          <Chip label="Dengeli (Sonnet)" active={pref === 'balanced'} onPress={() => pickPref('balanced')} />
-          <Chip label="Hızlı / ucuz (Haiku)" active={pref === 'fast'} onPress={() => pickPref('fast')} />
+          <Chip label={_('settings.balanced_sonnet')} active={pref === 'balanced'} onPress={() => pickPref('balanced')} />
+          <Chip label={_('settings.fast_cheap_haiku')} active={pref === 'fast'} onPress={() => pickPref('fast')} />
         </View>
         <T variant="caption" muted>
           {pref === 'balanced'
-            ? 'Rehber, fotoğraf ve koç gibi kalite isteyen işlerde Sonnet; kısa metin ayrıştırmada Haiku kullanılır.'
-            : 'Her iş en ucuz model olan Haiku ile yapılır. Daha ucuz ve hızlı, ama rehber kalitesi biraz düşebilir.'}
+            ? _('settings.sonnet_is_used_for_quality')
+            : _('settings.everything_runs_on_haiku_the')}
         </T>
       </Card>
     </>
@@ -466,12 +475,13 @@ function AiSettings() {
 }
 
 function IncRow({ label, value, options, onPick }: { label: string; value: number; options: number[]; onPick: (v: number) => void }) {
+  const _ = useT();
   return (
     <View style={{ gap: 8 }}>
       <T variant="label">{label}</T>
       <View style={styles.wrap}>
         {options.map((o) => (
-          <Chip key={o} label={`${String(o).replace('.', ',')} kg`} active={value === o} onPress={() => onPick(o)} />
+          <Chip key={o} label={_('common.kg2', { v: String(o).replace('.', decimalSep()) })} active={value === o} onPress={() => onPick(o)} />
         ))}
       </View>
     </View>

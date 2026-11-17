@@ -14,6 +14,7 @@ import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { HeaderBack } from '@/components/header-back';
+import { LanguageProvider, useT } from '@/components/language-provider';
 import { RestTimerProvider } from '@/components/rest-timer';
 import { SheetProvider } from '@/components/sheet';
 import { AppThemeProvider } from '@/components/theme-provider';
@@ -38,7 +39,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: '#030F17' }}>
       <SQLiteProvider databaseName="gymcime.db" onInit={migrateDb}>
         <AppThemeProvider>
-          <Navigation />
+          <LanguageProvider>
+            <Navigation />
+          </LanguageProvider>
         </AppThemeProvider>
       </SQLiteProvider>
     </GestureHandlerRootView>
@@ -55,6 +58,7 @@ function ReminderBoot() {
 }
 
 function Navigation() {
+  const _ = useT();
   const t = useTheme();
   const base = t.isDark ? DarkTheme : DefaultTheme;
   const navTheme = {
@@ -89,14 +93,15 @@ function Navigation() {
                 contentStyle: { backgroundColor: t.surface },
               }}
             />
-            <Stack.Screen name="exercises" options={{ title: 'Egzersizler', headerLeft: () => <HeaderBack /> }} />
+            <Stack.Screen name="add-past-workout" options={{ title: _('common.add_a_past_workout'), headerLeft: () => <HeaderBack /> }} />
+            <Stack.Screen name="exercises" options={{ title: _('layout.exercises'), headerLeft: () => <HeaderBack /> }} />
             <Stack.Screen name="exercise/[id]" options={{ title: '', headerLeft: () => <HeaderBack /> }} />
-            <Stack.Screen name="routine/[id]" options={{ title: 'Rutin', headerLeft: () => <HeaderBack /> }} />
+            <Stack.Screen name="routine/[id]" options={{ title: _('common.routine'), headerLeft: () => <HeaderBack /> }} />
             <Stack.Screen name="session/[id]" options={{ title: '', headerLeft: () => <HeaderBack /> }} />
-            <Stack.Screen name="body" options={{ title: 'Vücut analizi', headerLeft: () => <HeaderBack /> }} />
-            <Stack.Screen name="food/add" options={{ title: 'Yiyecek ekle', headerLeft: () => <HeaderBack /> }} />
-            <Stack.Screen name="week-plan" options={{ title: 'Haftalık plan', headerLeft: () => <HeaderBack /> }} />
-            <Stack.Screen name="settings" options={{ title: 'Ayarlar', headerLeft: () => <HeaderBack /> }} />
+            <Stack.Screen name="body" options={{ title: _('common.body_analysis'), headerLeft: () => <HeaderBack /> }} />
+            <Stack.Screen name="food/add" options={{ title: _('layout.add_food'), headerLeft: () => <HeaderBack /> }} />
+            <Stack.Screen name="week-plan" options={{ title: _('common.weekly_plan'), headerLeft: () => <HeaderBack /> }} />
+            <Stack.Screen name="settings" options={{ title: _('layout.settings'), headerLeft: () => <HeaderBack /> }} />
           </Stack>
         </SheetProvider>
       </RestTimerProvider>

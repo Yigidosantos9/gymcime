@@ -6,6 +6,7 @@ import type { useSheet } from '@/components/sheet';
 import { Button, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { t as tt } from '@/i18n';
 
 /** iOS'ta klavye ayrı pencerede panelin üstünü kapatır; yüksekliği kadar boşluk bırak (Android zaten pencereyi küçültüyor). */
 export function useKeyboardSpace() {
@@ -59,15 +60,15 @@ function NameForm({ close, initial, confirmLabel, onSubmit, placeholder, hint, a
 /** Rutin adı soran sheet (metin girişli). Onaylanınca `onSubmit(ad)` sheet kapandıktan sonra çağrılır. */
 export function askRoutineName(sheet: ReturnType<typeof useSheet>, opts: { title?: string; initial?: string; confirmLabel?: string; placeholder?: string; hint?: string; /** boş metinle de onaylanabilsin (ör. notu silmek için) */ allowEmpty?: boolean; onSubmit: (name: string) => void }) {
   sheet.custom({
-    title: opts.title ?? 'Rutin adı',
+    title: opts.title ?? tt('routineNameSheet.routine_name'),
     render: (close) => (
       <NameForm
         close={close}
         initial={opts.initial ?? ''}
-        confirmLabel={opts.confirmLabel ?? 'Kaydet'}
+        confirmLabel={opts.confirmLabel ?? tt('common.save')}
         onSubmit={opts.onSubmit}
-        placeholder={opts.placeholder ?? 'Sırt günü'}
-        hint={opts.hint ?? 'Örnekler: Sırt günü, Göğüs + Triceps, Bacak'}
+        placeholder={opts.placeholder ?? tt('routineNameSheet.back_day')}
+        hint={opts.hint ?? tt('routineNameSheet.examples_back_day_chest_triceps')}
         allowEmpty={opts.allowEmpty ?? false}
       />
     ),

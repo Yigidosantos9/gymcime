@@ -27,22 +27,22 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDayLong, formatMinutes } from '@/lib/format';
 import { computeRecovery, restingMuscles } from '@/lib/recovery';
 import { beginWorkout } from '@/lib/start-workout';
-import { dayStatus, shortRoutineName, weekDayTs, weeklyAdherence, type DayStatus } from '@/lib/week-plan';
+import { dayStatus, shortRoutineName, weekDayTs, weekdayLetters, weekdayNames, weeklyAdherence, type DayStatus } from '@/lib/week-plan';
+import { useT } from '@/components/language-provider';
+import { muscleLabel, routineLabel } from '@/i18n/labels';
+import { getLanguage, localeData, t as tt } from '@/i18n';
 
-const WEEK = ['P', 'S', 'Ç', 'P', 'C', 'C', 'P'];
-const WEEK_FULL = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
-const DAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
-const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
 function hello() {
   const h = new Date().getHours();
-  if (h < 6) return 'İyi geceler';
-  if (h < 12) return 'Günaydın';
-  if (h < 18) return 'Merhaba';
-  return 'İyi akşamlar';
+  if (h < 6) return tt('home.good_night');
+  if (h < 12) return tt('home.good_morning');
+  if (h < 18) return tt('home.hello');
+  return tt('home.good_evening');
 }
 
 export default function Home() {
+  const _ = useT();
   const t = useTheme();
   const sheet = useSheet();
   const { data, db } = useDbQuery(async (db) => {
@@ -94,14 +94,12 @@ export default function Home() {
   /** "+" : rutin listesi + "Boş antrenman" */
   const pickRoutine = () =>
     sheet.custom({
-      title: 'Antrenman seç',
+      title: _('home.pick_a_workout'),
       render: (close) => (
         <View style={{ gap: Spacing.sm }}>
           <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: Spacing.sm }}>
             {routines.length === 0 && (
-              <T secondary style={{ textAlign: 'center', paddingVertical: Spacing.sm }}>
-                Henüz rutin yok. Aşağıdan oluşturabilirsin.
-              </T>
+              <T secondary style={{ textAlign: 'center', paddingVertical: Spacing.sm }}>{_('home.no_routines_yet_you_can')}</T>
             )}
             {routines.map((r) => (
               <PressableScale
@@ -116,10 +114,10 @@ export default function Home() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <T variant="heading" numberOfLines={1}>
-                    {r.name}
+                    {routineLabel(r.name)}
                   </T>
                   <T variant="caption" secondary numberOfLines={1}>
-                    {r.exercise_count} egzersiz · {r.last_done ? formatDayLong(r.last_done) : 'henüz yapılmadı'}
+                    {_('common.exercises', { count: r.exercise_count, v: r.last_done ? formatDayLong(r.last_done) : _('common.not_done_yet') })}
                   </T>
                 </View>
                 <Icon name="play" size={14} color={t.primary} />
@@ -133,7 +131,7 @@ export default function Home() {
             }}
             style={[styles.pickRow, { backgroundColor: t.surfacePressed, justifyContent: 'center' }]}>
             <Icon name="add" size={16} color={t.text} />
-            <T variant="heading">Yeni rutin oluştur</T>
+            <T variant="heading">{_('common.create_a_new_routine')}</T>
           </PressableScale>
           <PressableScale
             onPress={async () => {
@@ -142,9 +140,7 @@ export default function Home() {
             }}
             style={[styles.pickRow, { backgroundColor: t.primarySoft, justifyContent: 'center' }]}>
             <Icon name="bolt" size={16} color={t.primary} />
-            <T variant="heading" color={t.primary}>
-              Boş antrenman
-            </T>
+            <T variant="heading" color={t.primary}>{_('common.empty_workout')}</T>
           </PressableScale>
         </View>
       ),
@@ -157,13 +153,13 @@ export default function Home() {
         <Animated.View entering={FadeInDown.duration(350)} style={styles.header}>
           <View style={{ flex: 1 }}>
             <T variant="overline" secondary>
-              {DAYS[now.getDay()]}, {now.getDate()} {MONTHS[now.getMonth()]}
+              {localeData().days[now.getDay()]}, {getLanguage() === 'en' ? `${localeData().months[now.getMonth()]} ${now.getDate()}` : `${now.getDate()} ${localeData().months[now.getMonth()]}`}
             </T>
             <T variant="title" numberOfLines={1}>
-              {hello()}, {profile?.name || 'sporcu'}
+              {hello()}, {profile?.name || _('home.athlete')}
             </T>
           </View>
-          <IconButton icon="search" label="Egzersiz kütüphanesi" onPress={() => router.push('/exercises')} color={t.textSecondary} />
+          <IconButton icon="search" label={_('common.exercise_library')} onPress={() => router.push('/exercises')} color={t.textSecondary} />
           <IconButton icon="settings" onPress={() => router.push('/settings')} color={t.textSecondary} />
         </Animated.View>
 
@@ -172,10 +168,8 @@ export default function Home() {
             <PressableScale onPress={() => router.push(`/workout/${active.id}`)} style={[styles.activeBanner, { backgroundColor: t.successSoft, borderColor: t.success }]}>
               <View style={[styles.liveDot, { backgroundColor: t.success }]} />
               <View style={{ flex: 1 }}>
-                <T variant="overline" color={t.success}>
-                  Devam ediyor
-                </T>
-                <T variant="heading">{active.name}</T>
+                <T variant="overline" color={t.success}>{_('home.in_progress')}</T>
+                <T variant="heading">{routineLabel(active.name)}</T>
               </View>
               <Icon name="chevronRight" size={16} color={t.success} />
             </PressableScale>
@@ -188,22 +182,20 @@ export default function Home() {
             <View style={[styles.wave, { width: 260, height: 260, top: -120, right: -90 }]} />
             <View style={[styles.wave, { width: 160, height: 160, bottom: -80, left: -40, opacity: 0.06 }]} />
             <T variant="overline" color="rgba(255,255,255,0.75)">
-              {restDay ? 'Haftalık plan' : plannedToday ? (stats.daysDone.has(todayIdx) ? 'Bugün · tamamlandı' : 'Bugün') : next ? 'Sıradaki antrenman' : 'Hazır mısın?'}
+              {restDay ? _('common.weekly_plan') : plannedToday ? (stats.daysDone.has(todayIdx) ? _('home.today_done') : _('common.today')) : next ? _('home.next_workout') : _('home.ready')}
             </T>
             <T variant="title" color="#fff" style={{ marginTop: 2 }}>
-              {restDay ? 'Bugün dinlenme günü 🌊' : plannedToday ? `Bugün: ${plannedToday.name}` : (next?.name ?? 'Serbest Antrenman')}
+              {restDay ? _('home.rest_day_today') : plannedToday ? _('home.today', { name: routineLabel(plannedToday.name) }) : (next ? routineLabel(next.name) : _('home.free_workout'))}
             </T>
             {restDay && (
-              <T variant="label" color="rgba(255,255,255,0.85)" style={{ marginTop: 6 }}>
-                Kaslarının toparlanma zamanı. İstersen yine de çalışabilirsin{suggested ? ` (öneri: ${suggested.name})` : ''}.
-              </T>
+              <T variant="label" color="rgba(255,255,255,0.85)" style={{ marginTop: 6 }}>{_('home.your_muscles_are_recovering_you', { v: suggested ? _('home.suggestion', { name: suggested.name }) : '' })}</T>
             )}
             {!restDay && nextDetail && nextDetail.items.length > 0 && (
               <>
                 <View style={styles.heroMeta}>
-                  <HeroMeta icon="barbell" text={`${nextDetail.items.length} egzersiz`} />
-                  <HeroMeta icon="layers" text={`${totalSets} set`} />
-                  <HeroMeta icon="clock" text={`~${Math.round(totalSets * 2.6)} dk`} />
+                  <HeroMeta icon="barbell" text={_('common.exercises2', { count: nextDetail.items.length })} />
+                  <HeroMeta icon="layers" text={_('home.sets', { count: totalSets })} />
+                  <HeroMeta icon="clock" text={_('home.min', { v: Math.round(totalSets * 2.6) })} />
                 </View>
                 <View style={{ gap: 4, marginTop: Spacing.md }}>
                   {nextDetail.items.slice(0, 3).map((it, i) => (
@@ -212,9 +204,7 @@ export default function Home() {
                     </T>
                   ))}
                   {nextDetail.items.length > 3 && (
-                    <T variant="caption" color="rgba(255,255,255,0.6)">
-                      +{nextDetail.items.length - 3} egzersiz daha
-                    </T>
+                    <T variant="caption" color="rgba(255,255,255,0.6)">{_('home.more_exercises', { v: nextDetail.items.length - 3 })}</T>
                   )}
                 </View>
               </>
@@ -223,8 +213,7 @@ export default function Home() {
               <View style={styles.heroWarn}>
                 <Icon name="moon" size={12} color="#fff" />
                 <T variant="caption" color="#fff" style={{ flex: 1 }}>
-                  {nextResting.map((r) => `${r.muscle} ${r.remaining} gün daha`).join(' · ')} dinlenmeli (önerilen {recoveryDays} gün)
-                </T>
+                  {_('home.should_rest_recommended_days', { v: nextResting.map((r) => _('home.more_days', { muscle: muscleLabel(r.muscle), count: r.remaining })).join(' · '), recoveryDays: recoveryDays })}</T>
               </View>
             )}
             <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg }}>
@@ -233,12 +222,12 @@ export default function Home() {
                 style={[styles.heroBtn, { backgroundColor: '#fff', flex: 1 }]}>
                 <Icon name="play" size={15} color={t.isDark ? '#083F66' : t.primaryStrong} />
                 <T variant="heading" color={t.isDark ? '#083F66' : t.primaryStrong}>
-                  {restDay ? 'Yine de başla' : 'Antrenmana başla'}
+                  {restDay ? _('home.start_anyway') : _('home.start_workout')}
                 </T>
               </PressableScale>
               <PressableScale
                 onPress={() => pickRoutine()}
-                accessibilityLabel="Rutin seç veya boş antrenman"
+                accessibilityLabel={_('home.pick_a_routine_or_start')}
                 style={[styles.heroBtn, { backgroundColor: 'rgba(255,255,255,0.16)', paddingHorizontal: 18 }]}>
                 <Icon name="add" size={16} color="#fff" />
               </PressableScale>
@@ -248,7 +237,7 @@ export default function Home() {
 
         {/* Bento */}
         <Animated.View entering={FadeInDown.delay(130).duration(400)} style={styles.row}>
-          <Tile icon="target" label="Bu hafta" style={{ minHeight: 150 }}>
+          <Tile icon="target" label={_('common.this_week')} style={{ minHeight: 150 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
               <Ring progress={stats.weekCount / target} size={62} stroke={7}>
                 <T variant="heading">
@@ -260,7 +249,7 @@ export default function Home() {
               </Ring>
             </View>
             <View style={styles.weekDots}>
-              {WEEK.map((d, i) => {
+              {weekdayLetters().map((d, i) => {
                 const done = stats.daysDone.has(i);
                 const today = i === todayIdx;
                 return (
@@ -281,15 +270,13 @@ export default function Home() {
             </View>
           </Tile>
           <View style={{ flex: 1, gap: Spacing.md }}>
-            <Tile icon="flame" label="Seri" tint={t.gold}>
+            <Tile icon="flame" label={_('home.streak')} tint={t.gold}>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
                 <T variant="num">{stats.weekStreak}</T>
-                <T variant="label" secondary>
-                  hafta
-                </T>
+                <T variant="label" secondary>{_('home.wk')}</T>
               </View>
             </Tile>
-            <Tile icon="trophy" label="Rekor · 30 gün" tint={t.gold}>
+            <Tile icon="trophy" label={_('home.prs_30_days')} tint={t.gold}>
               <T variant="num">{prs}</T>
             </Tile>
           </View>
@@ -300,23 +287,20 @@ export default function Home() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(180).duration(400)}>
-          <Tile icon="body" label="Son 7 gün · çalışan kaslar" onPress={() => router.navigate('/progress')} style={{ marginTop: Spacing.md }}>
+          <Tile icon="body" label={_('home.last_7_days_muscles_worked')} onPress={() => router.navigate('/progress')} style={{ marginTop: Spacing.md }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ flex: 1 }}>
                 <BodyMap values={muscleValues} size={150} labels={false} />
               </View>
               <View style={{ width: 120, gap: 6 }}>
                 {muscles.length === 0 ? (
-                  <T variant="caption" muted>
-                    Antrenman yaptıkça kasların burada parlayacak ✨
-                  </T>
+                  <T variant="caption" muted>{_('home.your_muscles_will_light_up')}</T>
                 ) : (
                   muscles.slice(0, 5).map((m) => (
                     <View key={m.muscle} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <T variant="label">{m.muscle}</T>
+                      <T variant="label">{muscleLabel(m.muscle)}</T>
                       <T variant="label" color={t.primary}>
-                        {m.sets} set
-                      </T>
+                        {_('home.sets2', { count: m.sets })}</T>
                     </View>
                   ))
                 )}
@@ -326,7 +310,7 @@ export default function Home() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(200).duration(400)}>
-          <Tile icon="moon" label={`Kas toparlanması · önerilen ${recoveryDays} gün`} onPress={() => router.navigate('/progress')} style={{ marginTop: Spacing.md }}>
+          <Tile icon="moon" label={_('common.muscle_recovery_recommended_days', { recoveryDays: recoveryDays })} onPress={() => router.navigate('/progress')} style={{ marginTop: Spacing.md }}>
             <View style={styles.recGrid}>
               {recovery.map((r) => {
                 const color = r.daysRested == null ? t.textMuted : r.ready ? t.success : t.gold;
@@ -335,10 +319,10 @@ export default function Home() {
                     <View style={[styles.recDot, { backgroundColor: color }]} />
                     <View style={{ flex: 1 }}>
                       <T variant="label" numberOfLines={1}>
-                        {r.muscle}
+                        {muscleLabel(r.muscle)}
                       </T>
                       <T variant="caption" color={color} style={{ fontSize: 10 }} numberOfLines={1}>
-                        {r.daysRested == null ? '—' : r.ready ? `${r.daysRested} gün · hazır` : `${r.daysRested} gün · ${r.remaining} gün daha`}
+                        {r.daysRested == null ? '—' : r.ready ? _('home.days_ready', { daysRested: r.daysRested }) : _('home.days_more_days', { daysRested: r.daysRested, remaining: r.remaining })}
                       </T>
                     </View>
                   </View>
@@ -349,30 +333,25 @@ export default function Home() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(220).duration(400)} style={[styles.row, { marginTop: Spacing.md }]}>
-          <Tile icon="chart" label="Bu hafta" onPress={() => router.navigate('/progress')}>
-            <T variant="num">{thisWeek.sets} set</T>
+          <Tile icon="chart" label={_('common.this_week')} onPress={() => router.navigate('/progress')}>
+            <T variant="num">{_('home.sets2', { count: thisWeek.sets })}</T>
             {delta != null ? (
               <T variant="caption" color={delta >= 0 ? t.success : t.danger}>
-                {delta >= 0 ? '▲' : '▼'} %{Math.abs(delta)} geçen haftaya göre
-              </T>
+                {_('home.vs_last_week', { v: delta >= 0 ? '▲' : '▼', v2: Math.abs(delta) })}</T>
             ) : (
-              <T variant="caption" muted>
-                Geçen hafta {prevWeek.sets} set
-              </T>
+              <T variant="caption" muted>{_('home.last_week_sets', { count: prevWeek.sets })}</T>
             )}
           </Tile>
-          <Tile icon="layers" label="Toplam" onPress={() => router.navigate('/history')}>
+          <Tile icon="layers" label={_('home.total')} onPress={() => router.navigate('/history')}>
             <T variant="num">{stats.total}</T>
-            <T variant="caption" muted>
-              antrenman
-            </T>
+            <T variant="caption" muted>{_('home.workouts')}</T>
           </Tile>
         </Animated.View>
 
         {/* Rutinler */}
         {routines.length > 0 && (
           <Animated.View entering={FadeInDown.delay(260).duration(400)}>
-            <SectionHeader title="Rutinlerin" action="Tümü" onAction={() => router.navigate('/routines')} />
+            <SectionHeader title={_('home.your_routines')} action={_('common.all')} onAction={() => router.navigate('/routines')} />
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -384,13 +363,12 @@ export default function Home() {
                     <Icon name="barbell" size={16} color={t.primary} />
                   </View>
                   <T variant="heading" numberOfLines={1}>
-                    {r.name}
+                    {routineLabel(r.name)}
                   </T>
                   <T variant="caption" secondary numberOfLines={1}>
-                    {r.exercise_count} egzersiz
-                  </T>
+                    {_('home.exercises', { count: r.exercise_count })}</T>
                   <T variant="caption" muted>
-                    {r.last_done ? formatDayLong(r.last_done) : 'Henüz yapılmadı'}
+                    {r.last_done ? formatDayLong(r.last_done) : _('home.not_done_yet')}
                   </T>
                 </PressableScale>
               ))}
@@ -400,12 +378,12 @@ export default function Home() {
 
         {/* Son antrenman */}
         <Animated.View entering={FadeInDown.delay(300).duration(400)}>
-          <SectionHeader title="Son antrenman" action={last ? 'Geçmiş' : undefined} onAction={() => router.navigate('/history')} />
+          <SectionHeader title={_('home.last_workout')} action={last ? _('common.history') : undefined} onAction={() => router.navigate('/history')} />
           {last ? (
             <PressableScale onPress={() => router.push(`/session/${last.id}`)} scaleTo={0.98}>
               <Card>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <T variant="heading">{last.name}</T>
+                  <T variant="heading">{routineLabel(last.name)}</T>
                   <T variant="caption" secondary>
                     {formatDayLong(last.started_at)}
                   </T>
@@ -414,15 +392,15 @@ export default function Home() {
                   {last.exercise_names}
                 </T>
                 <View style={{ flexDirection: 'row', marginTop: Spacing.lg }}>
-                  <Stat label="Süre" value={formatMinutes((last.finished_at ?? last.started_at) - last.started_at)} />
-                  <Stat label="Set" value={String(last.set_count)} />
-                  <Stat label="Rekor" value={String(last.pr_count)} />
+                  <Stat label={_('common.duration')} value={formatMinutes((last.finished_at ?? last.started_at) - last.started_at)} />
+                  <Stat label={_('common.sets')} value={String(last.set_count)} />
+                  <Stat label={_('common.prs')} value={String(last.pr_count)} />
                 </View>
               </Card>
             </PressableScale>
           ) : (
             <Card>
-              <EmptyState icon="homeOutline" title="Henüz antrenman yok" text="İlk antrenmanını başlat, özeti burada görünecek." />
+              <EmptyState icon="homeOutline" title={_('home.no_workouts_yet')} text={_('home.start_your_first_workout_and')} />
             </Card>
           )}
         </Animated.View>
@@ -433,17 +411,16 @@ export default function Home() {
 
 /** Haftalık plan şeridi: her gün için durum (✓ yapıldı, soluk = kaçırıldı), altında rutinin kısa adı. */
 function PlanStrip({ plan, hasPlan, daysDone, todayIdx, now }: { plan: Awaited<ReturnType<typeof getWeekPlan>>; hasPlan: boolean; daysDone: Set<number>; todayIdx: number; now: number }) {
+  const _ = useT();
   const t = useTheme();
   const adherence = weeklyAdherence(
     plan.map((d) => d.routine_id != null),
     daysDone,
   );
   return (
-    <Tile icon="history" label={hasPlan ? `Bu hafta plan: ${adherence.done}/${adherence.planned}` : 'Haftalık plan'} onPress={() => router.push('/week-plan')}>
+    <Tile icon="history" label={hasPlan ? _('home.this_week_s_plan', { done: adherence.done, planned: adherence.planned }) : _('common.weekly_plan')} onPress={() => router.push('/week-plan')}>
       {!hasPlan ? (
-        <T variant="caption" secondary>
-          Pazartesi Göğüs, Salı Sırt… günlere rutin ata; burada ve takvimde görünsün.
-        </T>
+        <T variant="caption" secondary>{_('home.assign_routines_to_days_monday')}</T>
       ) : (
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
           {plan.map((d, i) => {
@@ -451,9 +428,9 @@ function PlanStrip({ plan, hasPlan, daysDone, todayIdx, now }: { plan: Awaited<R
             const status: DayStatus = dayStatus(planned, daysDone.has(i), weekDayTs(now, i), now);
             const isToday = i === todayIdx;
             return (
-              <View key={i} style={{ alignItems: 'center', gap: 4, flex: 1 }} accessible accessibilityLabel={`${WEEK_FULL[i]}: ${d.routine_name ?? 'dinlenme'}${status === 'done' ? ', yapıldı' : status === 'missed' ? ', kaçırıldı' : ''}`}>
+              <View key={i} style={{ alignItems: 'center', gap: 4, flex: 1 }} accessible accessibilityLabel={`${weekdayNames()[i]}: ${d.routine_name ? routineLabel(d.routine_name) : _('common.rest_lower')}${status === 'done' ? _('home.done') : status === 'missed' ? _('home.missed') : ''}`}>
                 <T variant="caption" color={isToday ? t.primary : t.textMuted} style={{ fontSize: 10, fontFamily: isToday ? Font.heavy : Font.regular }}>
-                  {WEEK[i]}
+                  {weekdayLetters()[i]}
                 </T>
                 <View
                   style={[

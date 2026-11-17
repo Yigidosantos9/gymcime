@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -11,7 +12,7 @@ const MAX_SIDE = 1024;
 export async function pickMealPhoto(source: 'camera' | 'library'): Promise<MealPhoto | null> {
   if (source === 'camera') {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) throw new PhotoPermissionError('Kamera izni verilmedi. Ayarlar uygulamasından izin verebilirsin.');
+    if (!perm.granted) throw new PhotoPermissionError(t('photo.noPerm'));
   }
   const opts: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], quality: 1, allowsEditing: false };
   const res = source === 'camera' ? await ImagePicker.launchCameraAsync(opts) : await ImagePicker.launchImageLibraryAsync(opts);
@@ -21,6 +22,6 @@ export async function pickMealPhoto(source: 'camera' | 'library'): Promise<MealP
   ctx.resize(a.width >= a.height ? { width: Math.min(MAX_SIDE, a.width) } : { height: Math.min(MAX_SIDE, a.height) });
   const ref = await ctx.renderAsync();
   const out = await ref.saveAsync({ format: ImageManipulator.SaveFormat.JPEG, compress: 0.7, base64: true });
-  if (!out.base64) throw new Error('Fotoğraf işlenemedi.');
+  if (!out.base64) throw new Error(t('photo.failed'));
   return { uri: out.uri, base64: out.base64 };
 }

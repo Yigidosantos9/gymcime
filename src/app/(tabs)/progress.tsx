@@ -19,10 +19,14 @@ import { haptic } from '@/lib/haptics';
 import { computeRecovery, fatigueValues, restLabel } from '@/lib/recovery';
 import { formatMin } from '@/lib/cardio';
 import { formatRest } from '@/lib/rest';
+import { useT } from '@/components/language-provider';
+import { muscleLabel } from '@/i18n/labels';
+import { decimalSep } from '@/i18n';
 
 type Range = 7 | 28;
 
 export default function Progress() {
+  const _ = useT();
   const t = useTheme();
   const [bw, setBw] = useState('');
   const [range, setRange] = useState<Range>(7);
@@ -67,23 +71,19 @@ export default function Progress() {
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: t.background }}>
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 120 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <HomeBack />
-        <ScreenHeader title="İlerleme" right={<IconButton icon="settings" onPress={() => router.push('/settings')} color={t.textSecondary} />} />
+        <ScreenHeader title={_('common.progress')} right={<IconButton icon="settings" onPress={() => router.push('/settings')} color={t.textSecondary} />} />
 
         {/* Haftalık çalışma seti */}
         <Animated.View entering={FadeInDown.duration(350)}>
           <Card>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <View style={{ gap: 2 }}>
-                <T variant="overline" secondary>
-                  Bu hafta çalışma seti
-                </T>
+                <T variant="overline" secondary>{_('progress.working_sets_this_week')}</T>
                 <T variant="numLarge" style={{ fontSize: 36, lineHeight: 42 }}>
                   {thisWeek.sets}
                 </T>
                 {thisWeek.sets === 0 && lastWeek?.sets ? (
-                  <T variant="caption" muted>
-                    Geçen hafta {lastWeek.sets} set — hadi geçelim 🌊
-                  </T>
+                  <T variant="caption" muted>{_('progress.last_week_sets_let_s', { count: lastWeek.sets })}</T>
                 ) : null}
               </View>
               {delta != null && (
@@ -104,25 +104,20 @@ export default function Progress() {
         {/* Kardiyo */}
         {cardioWeeks.some((w) => w.minutes > 0) && (
           <Animated.View entering={FadeInDown.delay(40).duration(350)}>
-            <SectionHeader title="Kardiyo" />
+            <SectionHeader title={_('common.cardio2')} />
             <Card>
               <View style={{ flexDirection: 'row', gap: Spacing.xl }}>
                 <View>
-                  <T variant="overline" secondary>
-                    Bu hafta
-                  </T>
+                  <T variant="overline" secondary>{_('common.this_week')}</T>
                   <T variant="numLarge" style={{ fontSize: 30, lineHeight: 36 }}>
                     {formatMin(cardioWeeks[cardioWeeks.length - 1].minutes)}
                   </T>
                 </View>
                 {cardioWeeks[cardioWeeks.length - 1].km > 0 && (
                   <View>
-                    <T variant="overline" secondary>
-                      Mesafe
-                    </T>
+                    <T variant="overline" secondary>{_('progress.distance')}</T>
                     <T variant="numLarge" style={{ fontSize: 30, lineHeight: 36 }}>
-                      {String(Math.round(cardioWeeks[cardioWeeks.length - 1].km * 10) / 10).replace('.', ',')} km
-                    </T>
+                      {_('progress.km', { v: String(Math.round(cardioWeeks[cardioWeeks.length - 1].km * 10) / 10).replace('.', decimalSep()) })}</T>
                   </View>
                 )}
               </View>
@@ -135,11 +130,11 @@ export default function Progress() {
 
         {/* Kas haritası */}
         <Animated.View entering={FadeInDown.delay(70).duration(350)}>
-          <SectionHeader title="Kas dengesi" />
+          <SectionHeader title={_('progress.muscle_balance')} />
           <Card>
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: Spacing.lg }}>
-              <Chip label="Son 7 gün" active={range === 7} onPress={() => setRange(7)} />
-              <Chip label="Son 4 hafta" active={range === 28} onPress={() => setRange(28)} />
+              <Chip label={_('progress.last_7_days')} active={range === 7} onPress={() => setRange(7)} />
+              <Chip label={_('progress.last_4_weeks')} active={range === 28} onPress={() => setRange(28)} />
             </View>
             <BodyMap values={heatValues} size={210} />
             <View style={{ marginTop: Spacing.md }}>
@@ -168,20 +163,16 @@ export default function Progress() {
                 );
               })}
             </View>
-            <T variant="caption" muted style={{ marginTop: Spacing.sm }}>
-              Haftalık set · yeşil bant 10–20 set: kas büyümesi için önerilen aralık
-            </T>
+            <T variant="caption" muted style={{ marginTop: Spacing.sm }}>{_('progress.weekly_sets_green_band_10')}</T>
           </Card>
         </Animated.View>
 
         {/* Kas toparlanması */}
         <Animated.View entering={FadeInDown.delay(100).duration(350)}>
-          <SectionHeader title={`Kas toparlanması · önerilen ${recoveryDays} gün`} />
+          <SectionHeader title={_('common.muscle_recovery_recommended_days', { recoveryDays: recoveryDays })} />
           <Card>
             <BodyMap values={fatigueValues(recovery, recoveryDays)} size={180} />
-            <T variant="caption" muted style={{ textAlign: 'center', marginTop: Spacing.sm }}>
-              Renkli bölgeler henüz dinleniyor · koyu bölgeler hazır
-            </T>
+            <T variant="caption" muted style={{ textAlign: 'center', marginTop: Spacing.sm }}>{_('progress.colored_areas_are_still_recovering')}</T>
             <View style={{ marginTop: Spacing.md }}>
               {recovery.map((r, i) => {
                 const color = r.daysRested == null ? t.textMuted : r.ready ? t.success : t.gold;
@@ -189,14 +180,14 @@ export default function Progress() {
                   <View key={r.muscle} style={[styles.recRow, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }]}>
                     <MuscleIcon muscle={r.muscle} size={28} />
                     <View style={{ flex: 1 }}>
-                      <T variant="label">{r.muscle}</T>
+                      <T variant="label">{muscleLabel(r.muscle)}</T>
                       <T variant="caption" muted>
                         {restLabel(r)}
-                        {r.lastSets ? ` · son seferde ${r.lastSets} set` : ''}
+                        {r.lastSets ? _('progress.last_time_sets', { count: r.lastSets }) : ''}
                       </T>
                     </View>
                     <Badge
-                      label={r.daysRested == null ? '—' : r.ready ? 'Hazır' : `${r.remaining} gün daha`}
+                      label={r.daysRested == null ? '—' : r.ready ? _('progress.ready') : _('progress.more_days', { count: r.remaining })}
                       icon={r.ready && r.daysRested != null ? 'check' : r.daysRested == null ? undefined : 'moon'}
                       tint={color}
                       bg={r.daysRested == null ? t.surfaceRaised : r.ready ? t.successSoft : t.goldSoft}
@@ -210,10 +201,10 @@ export default function Progress() {
 
         {/* Dinlenme analizi */}
         <Animated.View entering={FadeInDown.delay(120).duration(350)}>
-          <SectionHeader title="Mola disiplini · son 4 hafta" />
+          <SectionHeader title={_('progress.rest_discipline_last_4_weeks')} />
           <Card padded={rests.length === 0}>
             {rests.length === 0 ? (
-              <T secondary>Setleri tamamladıkça gerçek dinlenme sürelerin burada analiz edilecek.</T>
+              <T secondary>{_('progress.your_actual_rest_times_will')}</T>
             ) : (
               rests.slice(0, 6).map((r, i) => {
                 const diff = r.avg_taken - r.avg_target;
@@ -236,8 +227,7 @@ export default function Progress() {
                         <View style={{ width: `${(ratio / 1.6) * 100}%`, height: '100%', borderRadius: 3, backgroundColor: color }} />
                         <View style={[styles.restTarget, { left: `${(1 / 1.6) * 100}%`, backgroundColor: t.text }]} />
                       </View>
-                      <T variant="caption" muted>
-                        Hedef {formatRest(r.avg_target)} · {over ? `ortalama ${formatRest(Math.round(diff))} fazla` : under ? 'hedeften kısa' : 'hedefte 👌'}
+                      <T variant="caption" muted>{_('progress.target', { v: formatRest(r.avg_target), v2: over ? _('progress.over_on_average', { v: formatRest(Math.round(diff)) }) : under ? _('progress.shorter_than_target') : _('progress.on_target') })}
                       </T>
                     </View>
                   </View>
@@ -249,10 +239,10 @@ export default function Progress() {
 
         {/* Egzersizler */}
         <Animated.View entering={FadeInDown.delay(160).duration(350)}>
-          <SectionHeader title="Güç · tahmini 1RM" />
+          <SectionHeader title={_('progress.strength_estimated_1rm')} />
           {top.length === 0 ? (
             <Card>
-              <EmptyState icon="progress" title="Veri birikiyor" text="Birkaç antrenmandan sonra güç grafiklerin burada belirecek." />
+              <EmptyState icon="progress" title={_('progress.collecting_data')} text={_('progress.your_strength_charts_will_appear')} />
             </Card>
           ) : (
             <Card padded={false}>
@@ -268,14 +258,12 @@ export default function Progress() {
                       {e.name}
                     </T>
                     <T variant="caption" secondary>
-                      {e.sessions} seans
-                    </T>
+                      {_('progress.sessions', { count: e.sessions })}</T>
                   </View>
                   <T variant="num" style={{ fontSize: 18 }} color={t.primary}>
                     {formatWeight(Math.round(e.best1rm * 2) / 2)}
                     <T variant="caption" secondary>
-                      {' '}kg
-                    </T>
+                      {_('progress.kg')}</T>
                   </T>
                   <Icon name="chevronRight" size={13} color={t.textMuted} />
                 </PressableScale>
@@ -286,7 +274,7 @@ export default function Progress() {
 
         {/* Vücut ağırlığı */}
         <Animated.View entering={FadeInDown.delay(200).duration(350)}>
-          <SectionHeader title="Vücut ağırlığı" />
+          <SectionHeader title={_('progress.body_weight')} />
           <Card>
             {bodies.length > 1 ? (
               <LineChart
@@ -297,16 +285,15 @@ export default function Progress() {
               />
             ) : bodies.length === 1 ? (
               <T variant="num" color={t.primary}>
-                {formatWeight(bodies[0].weight)} kg
-              </T>
+                {_('common.kg2', { v: formatWeight(bodies[0].weight) })}</T>
             ) : (
-              <T secondary>Ağırlığını düzenli kaydet, trendini burada gör.</T>
+              <T secondary>{_('progress.log_your_weight_regularly_and')}</T>
             )}
             <View style={styles.bwRow}>
               <TextInput
                 value={bw}
                 onChangeText={setBw}
-                placeholder="Bugünkü kilon"
+                placeholder={_('progress.today_s_weight')}
                 placeholderTextColor={t.textMuted}
                 keyboardType="decimal-pad"
                 style={[styles.bwInput, { backgroundColor: t.surfaceRaised, color: t.text }]}

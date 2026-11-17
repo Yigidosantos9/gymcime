@@ -7,12 +7,15 @@ import { assert, freshDb } from './helpers';
   // ── Türkçe talimatlar
   const entries = Object.entries(EXERCISE_MEDIA);
   assert(entries.length > 60, `eşlenen egzersiz sayısı (${entries.length})`);
-  const empty = entries.filter(([, m]) => m.instructions.length === 0 || m.instructions.some((s) => s.trim().length < 5)).map(([k]) => k);
-  assert(empty.length === 0, `her egzersizde boş olmayan Türkçe adım (${empty.join(',')})`);
+  const empty = entries.filter(([, m]) => m.steps.tr.length === 0 || m.steps.en.length === 0 || [...m.steps.tr, ...m.steps.en].some((s) => s.trim().length < 5)).map(([k]) => k);
+  assert(empty.length === 0, `her egzersizde iki dilde boş olmayan adım (${empty.join(',')})`);
   const english = /\b(the|your|and|with|then|until|should|breathe|repetitions)\b/i;
-  const eng = entries.filter(([, m]) => m.instructions.some((s) => english.test(s))).map(([k]) => k);
+  const eng = entries.filter(([, m]) => m.steps.tr.some((s) => english.test(s))).map(([k]) => k);
   assert(eng.length === 0, `talimatlarda İngilizce kalıntı yok (${eng.join(',')})`);
-  const noTr = entries.filter(([, m]) => !m.instructions.every((s) => /[a-zçğıöşü]/i.test(s))).map(([k]) => k);
+  // İngilizce adımlar gerçekten İngilizce (Türkçe karakter yok)
+  const trInEn = entries.filter(([, m]) => m.steps.en.some((s) => /[çğıöşüÇĞİÖŞÜ]/.test(s))).map(([k]) => k);
+  assert(trInEn.length === 0, `İngilizce adımlarda Türkçe karakter yok (${trInEn.join(',')})`);
+  const noTr = entries.filter(([, m]) => !m.steps.tr.every((s) => /[a-zçğıöşü]/i.test(s))).map(([k]) => k);
   assert(noTr.length === 0, 'adımlar cümle halinde');
 
   // ── createRoutineFromWorkout

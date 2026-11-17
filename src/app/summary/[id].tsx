@@ -20,10 +20,11 @@ import { haptic } from '@/lib/haptics';
 import { formatKm, formatMin } from '@/lib/cardio';
 import { formatRest } from '@/lib/rest';
 import { goHome } from '@/lib/nav';
-
-const CHEERS = ['Harikaydın! 🌊', 'Dalga gibi geldin! 🌊', 'Bugün de kazandın! 💪', 'Okyanus kadar güçlü! 🐋'];
+import { useT } from '@/components/language-provider';
+import { routineLabel } from '@/i18n/labels';
 
 export default function Summary() {
+  const _ = useT();
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data } = useDbQuery(async (db) => {
@@ -38,13 +39,13 @@ export default function Summary() {
   const saveAsRoutine = () => {
     if (!data) return;
     askRoutineName(sheet, {
-      title: 'Rutin olarak kaydet',
+      title: _('summary.save_as_routine'),
       initial: data.name === 'Serbest Antrenman' ? '' : data.name,
       onSubmit: async (name) => {
         const rid = await createRoutineFromWorkout(db, data.workoutId, name);
         if (rid == null) {
           haptic.warning();
-          sheet.actions({ title: 'Rutin oluşturulamadı', message: 'Bu antrenmanda tamamlanmış çalışma seti yok.', actions: [], cancelLabel: 'Tamam' });
+          sheet.actions({ title: _('summary.couldn_t_create_the_routine'), message: _('summary.there_are_no_completed_working'), actions: [], cancelLabel: _('common.ok') });
           return;
         }
         haptic.success();
@@ -57,12 +58,12 @@ export default function Summary() {
   const updateRoutine = () => {
     if (!diff || !data) return;
     sheet.actions({
-      title: `"${diff.routineName}" güncellensin mi?`,
-      message: `Bu antrenmandaki yapı rutine yazılır (egzersiz sırası, çalışma seti sayısı, tekrar aralığı):\n${diff.lines.join('\n')}`,
-      cancelLabel: 'Şimdi değil',
+      title: _('summary.update', { routineName: diff.routineName }),
+      message: _('summary.the_structure_from_this_workout', { v: diff.lines.join('\n') }),
+      cancelLabel: _('summary.not_now'),
       actions: [
         {
-          label: 'Değişiklikleri rutine kaydet',
+          label: _('summary.save_changes_to_routine'),
           icon: 'check',
           style: 'primary',
           onPress: async () => {
@@ -81,6 +82,7 @@ export default function Summary() {
 
   if (!data) return <View style={{ flex: 1, backgroundColor: t.background }} />;
 
+  const CHEERS = [_('summary.you_were_great'), _('summary.waves'), _('summary.another_win_today'), _('summary.strong_as_the_ocean')];
   const cheer = CHEERS[data.workoutNumber % CHEERS.length];
   const maxSets = Math.max(1, ...data.muscles.map((m) => m.sets));
   const heat = Object.fromEntries(data.muscles.map((m) => [m.muscle, m.sets / maxSets]));
@@ -98,24 +100,22 @@ export default function Summary() {
               {cheer}
             </T>
             <T secondary style={{ textAlign: 'center', marginTop: 6 }}>
-              {data.workoutNumber}. antrenmanın · {data.name}
+              {_('summary.workout', { workoutNumber: data.workoutNumber, name: routineLabel(data.name) })}
             </T>
           </Animated.View>
 
           <Animated.View entering={FadeInDown.delay(200)} style={styles.statsRow}>
-            <Box icon="clock" label="Süre" value={formatMinutes(data.durationMs)} />
-            <Box icon="layers" label="Set" value={String(data.setCount)} />
-            <Box icon="trophy" label="Rekor" value={String(data.prs.length)} />
+            <Box icon="clock" label={_('common.duration')} value={formatMinutes(data.durationMs)} />
+            <Box icon="layers" label={_('common.sets')} value={String(data.setCount)} />
+            <Box icon="trophy" label={_('common.prs')} value={String(data.prs.length)} />
           </Animated.View>
 
           {data.restAvgTaken != null && data.restAvgTarget != null && (
             <Animated.View entering={FadeInDown.delay(260)} style={[styles.panel, { backgroundColor: t.surface, borderColor: t.border }]}>
               <Icon name="timer" size={18} color={t.primary} />
               <View style={{ flex: 1 }}>
-                <T variant="heading">Ortalama mola {formatDuration(data.restAvgTaken * 1000)}</T>
-                <T variant="caption" secondary>
-                  Hedefin {formatRest(data.restAvgTarget)}
-                  {data.restAvgTaken > data.restAvgTarget + 30 ? ' · biraz uzun tuttun, bir sonrakinde sıkılaştır' : ' · disiplinliydin 👌'}
+                <T variant="heading">{_('summary.average_rest', { v: formatDuration(data.restAvgTaken * 1000) })}</T>
+                <T variant="caption" secondary>{_('summary.your_target', { v: formatRest(data.restAvgTarget), v2: data.restAvgTaken > data.restAvgTarget + 30 ? _('summary.a_bit_long_tighten_up') : _('summary.you_were_disciplined') })}
                 </T>
               </View>
             </Animated.View>
@@ -125,35 +125,29 @@ export default function Summary() {
             <Animated.View entering={FadeInDown.delay(290)} style={[styles.panel, { backgroundColor: t.surface, borderColor: t.border }]}>
               <Icon name="flame" size={18} color={t.primary} />
               <View style={{ flex: 1 }}>
-                <T variant="heading">Kardiyo {formatMin(data.cardio.minutes)}</T>
+                <T variant="heading">{_('common.cardio', { v: formatMin(data.cardio.minutes) })}</T>
                 <T variant="caption" secondary>
-                  {data.cardio.km > 0 ? `${formatKm(data.cardio.km * 1000)} km · ` : ''}
-                  {data.cardio.sets} set
-                </T>
+                  {_('summary.sets', { v: data.cardio.km > 0 ? _('summary.km', { v: formatKm(data.cardio.km * 1000) }) : '', count: data.cardio.sets })}</T>
               </View>
             </Animated.View>
           )}
 
           {data.muscles.length > 0 && (
             <Animated.View entering={FadeInDown.delay(320)} style={[styles.panelCol, { backgroundColor: t.surface, borderColor: t.border }]}>
-              <T variant="overline" secondary>
-                Bugün çalışan kaslar
-              </T>
+              <T variant="overline" secondary>{_('summary.muscles_worked_today')}</T>
               <BodyMap values={heat} size={170} labels={false} />
             </Animated.View>
           )}
 
           {data.prs.length > 0 && (
             <Animated.View entering={FadeInDown.delay(380)} style={[styles.panelCol, { backgroundColor: t.goldSoft, borderColor: t.gold }]}>
-              <T variant="heading" color={t.gold}>
-                🏆 {data.prs.length} yeni kişisel rekor
-              </T>
+              <T variant="heading" color={t.gold}>{_('summary.new_personal_records', { count: data.prs.length })}</T>
               {data.prs
                 .filter((p) => p.kind !== 'cardio' && p.kind !== 'timed')
                 .slice(0, 5)
                 .map((p, i) => (
                   <T key={i}>
-                    {p.name} — {formatWeight(p.weight)} kg × {p.reps}
+                    {_('summary.kg', { name: p.name, v: formatWeight(p.weight), reps: p.reps })}
                   </T>
                 ))}
               {data.cardioPrs.map((p, i) => (
@@ -167,17 +161,13 @@ export default function Summary() {
 
         <View style={{ padding: Spacing.xl, paddingTop: 0 }}>
           <PressableScale onPress={goHome} style={[styles.cta, { backgroundColor: t.primary }]}>
-            <T variant="heading" color={t.onPrimary}>
-              Harika, devam!
-            </T>
+            <T variant="heading" color={t.onPrimary}>{_('summary.great_keep_going')}</T>
           </PressableScale>
           {diff && !updatedRoutine && (
-            <PressableScale onPress={updateRoutine} accessibilityLabel="Değişiklikleri rutine kaydet" style={[styles.diffBtn, { backgroundColor: t.primarySoft }]}>
+            <PressableScale onPress={updateRoutine} accessibilityLabel={_('summary.save_changes_to_routine')} style={[styles.diffBtn, { backgroundColor: t.primarySoft }]}>
               <Icon name="edit" size={16} color={t.primary} />
               <View style={{ flex: 1 }}>
-                <T variant="label" color={t.primary} style={{ fontFamily: Font.bold }}>
-                  Değişiklikleri rutine kaydet
-                </T>
+                <T variant="label" color={t.primary} style={{ fontFamily: Font.bold }}>{_('summary.save_changes_to_routine')}</T>
                 <T variant="caption" secondary numberOfLines={1}>
                   {diff.lines.join(' · ')}
                 </T>
@@ -188,7 +178,7 @@ export default function Summary() {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14 }}>
               <Icon name="check" size={16} color={t.success} />
               <T variant="label" color={t.success}>
-                {`“${updatedRoutine}” rutini güncellendi`}
+                {_('summary.routine_updated', { updatedRoutine: updatedRoutine })}
               </T>
             </View>
           )}
@@ -196,15 +186,13 @@ export default function Summary() {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14 }}>
               <Icon name="check" size={16} color={t.success} />
               <T variant="label" color={t.success}>
-                {`“${savedRoutine}” rutini kaydedildi`}
+                {_('summary.routine_saved', { savedRoutine: savedRoutine })}
               </T>
             </View>
           ) : (
             <PressableScale onPress={saveAsRoutine} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14 }}>
               <Icon name="routines" size={16} color={t.primary} />
-              <T variant="label" color={t.primary}>
-                Rutin olarak kaydet
-              </T>
+              <T variant="label" color={t.primary}>{_('summary.save_as_routine')}</T>
             </PressableScale>
           )}
           <PressableScale onPress={() => {
@@ -212,9 +200,7 @@ export default function Summary() {
               goHome();
               router.push(`/session/${data.workoutId}`);
             }} style={{ alignItems: 'center', padding: 14 }}>
-            <T variant="label" secondary>
-              Detayları gör
-            </T>
+            <T variant="label" secondary>{_('summary.see_details')}</T>
           </PressableScale>
         </View>
       </SafeAreaView>

@@ -10,19 +10,21 @@ import { useTheme } from '@/hooks/use-theme';
 import { haptic } from '@/lib/haptics';
 import { ensureReminderPermission, getReminderSettings, saveReminderSettings, syncReminders } from '@/lib/reminder-io';
 import { formatTime, type ReminderSettings, type TimeOfDay } from '@/lib/reminders';
-import { WEEKDAY_NAMES, WEEKDAY_SHORT } from '@/lib/week-plan';
+import { weekdayNames, weekdayShort } from '@/lib/week-plan';
+import { useT } from '@/components/language-provider';
 
 function Stepper({ label, value, onMinus, onPlus }: { label: string; value: string; onMinus: () => void; onPlus: () => void }) {
+  const _ = useT();
   const t = useTheme();
   return (
     <View style={[styles.stepper, { backgroundColor: t.surfaceRaised }]}>
-      <PressableScale onPress={onMinus} hapticOnPress={false} accessibilityLabel={`${label} azalt`} style={styles.stepBtn}>
+      <PressableScale onPress={onMinus} hapticOnPress={false} accessibilityLabel={_('reminderSettings.decrease', { label: label })} style={styles.stepBtn}>
         <Icon name="minus" size={12} color={t.textSecondary} />
       </PressableScale>
       <T variant="heading" style={{ minWidth: 30, textAlign: 'center', fontVariant: ['tabular-nums'] }} accessibilityLabel={`${label} ${value}`}>
         {value}
       </T>
-      <PressableScale onPress={onPlus} hapticOnPress={false} accessibilityLabel={`${label} artır`} style={styles.stepBtn}>
+      <PressableScale onPress={onPlus} hapticOnPress={false} accessibilityLabel={_('reminderSettings.increase', { label: label })} style={styles.stepBtn}>
         <Icon name="add" size={12} color={t.primary} />
       </PressableScale>
     </View>
@@ -30,20 +32,22 @@ function Stepper({ label, value, onMinus, onPlus }: { label: string; value: stri
 }
 
 function TimeRow({ value, onChange }: { value: TimeOfDay; onChange: (v: TimeOfDay) => void }) {
+  const _ = useT();
   const t = useTheme();
   const pad = (n: number) => String(n).padStart(2, '0');
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
       <Icon name="clock" size={14} color={t.textSecondary} />
-      <Stepper label="Saat" value={pad(value.hour)} onMinus={() => onChange({ ...value, hour: (value.hour + 23) % 24 })} onPlus={() => onChange({ ...value, hour: (value.hour + 1) % 24 })} />
+      <Stepper label={_('reminderSettings.hour')} value={pad(value.hour)} onMinus={() => onChange({ ...value, hour: (value.hour + 23) % 24 })} onPlus={() => onChange({ ...value, hour: (value.hour + 1) % 24 })} />
       <T variant="heading">:</T>
-      <Stepper label="Dakika" value={pad(value.minute)} onMinus={() => onChange({ ...value, minute: (value.minute + 55) % 60 })} onPlus={() => onChange({ ...value, minute: (value.minute + 5) % 60 })} />
+      <Stepper label={_('reminderSettings.minute')} value={pad(value.minute)} onMinus={() => onChange({ ...value, minute: (value.minute + 55) % 60 })} onPlus={() => onChange({ ...value, minute: (value.minute + 5) % 60 })} />
     </View>
   );
 }
 
 /** Ayarlar → Hatırlatıcılar: antrenman günleri, tartılma, öğün kaydı. Yerel bildirim (internet gerekmez). */
 export function ReminderSettingsSection() {
+  const _ = useT();
   const t = useTheme();
   const db = useSQLiteContext();
   const [s, setS] = useState<ReminderSettings | null>(null);
@@ -84,41 +88,35 @@ export function ReminderSettingsSection() {
 
   return (
     <>
-      <SectionHeader title="Hatırlatıcılar" />
+      <SectionHeader title={_('reminderSettings.reminders')} />
       <Card style={{ gap: Spacing.lg }}>
         {denied && (
-          <T variant="caption" color={t.danger}>
-            Bildirim izni verilmedi. Hatırlatıcılar için telefonun Ayarlar → gymcime → Bildirimler bölümünden izin ver.
-          </T>
+          <T variant="caption" color={t.danger}>{_('reminderSettings.notification_permission_wasn_t')}</T>
         )}
 
         <View style={{ gap: Spacing.md }}>
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
-              <T variant="label">Antrenman günü</T>
+              <T variant="label">{_('reminderSettings.training_day')}</T>
               <T variant="caption" muted>
-                {hasPlan ? 'Haftalık plandaki günlerde, rutin adıyla' : 'Seçtiğin günlerde'}
+                {hasPlan ? _('reminderSettings.on_days_in_the_weekly') : _('reminderSettings.on_the_days_you_choose')}
               </T>
             </View>
-            <Switch value={s.workout.on} onValueChange={(v) => toggle('workout', v)} trackColor={{ true: t.primary, false: t.surfacePressed }} accessibilityLabel="Antrenman günü hatırlatıcısı" />
+            <Switch value={s.workout.on} onValueChange={(v) => toggle('workout', v)} trackColor={{ true: t.primary, false: t.surfacePressed }} accessibilityLabel={_('reminderSettings.training_day_reminder')} />
           </View>
           {s.workout.on && (
             <>
               {hasPlan ? (
-                <T variant="caption" secondary>
-                  Günler haftalık plandan gelir (rutin atanan günler). Planı değiştirince bildirimler otomatik güncellenir.
-                </T>
+                <T variant="caption" secondary>{_('reminderSettings.days_come_from_the_weekly')}</T>
               ) : (
                 <View style={styles.wrap}>
-                  {WEEKDAY_SHORT.map((d, i) => (
+                  {weekdayShort().map((d, i) => (
                     <Chip key={d} label={d} active={s.workout.days.includes(i)} onPress={() => toggleDay(i)} />
                   ))}
                 </View>
               )}
               <TimeRow value={s.workout} onChange={(v) => commit({ ...s, workout: { ...s.workout, ...v } })} />
-              <T variant="caption" muted>
-                Her planlı gün {formatTime(s.workout)}. O gün antrenman yapılmış olsa da bildirim gelir (metin nötr kalır).
-              </T>
+              <T variant="caption" muted>{_('reminderSettings.every_planned_day_the_notification', { v: formatTime(s.workout) })}</T>
             </>
           )}
         </View>
@@ -126,23 +124,21 @@ export function ReminderSettingsSection() {
         <View style={{ gap: Spacing.md }}>
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
-              <T variant="label">Tartılma</T>
-              <T variant="caption" muted>
-                Haftada bir gün
-              </T>
+              <T variant="label">{_('reminderSettings.weigh_in')}</T>
+              <T variant="caption" muted>{_('reminderSettings.once_a_week')}</T>
             </View>
-            <Switch value={s.weigh.on} onValueChange={(v) => toggle('weigh', v)} trackColor={{ true: t.primary, false: t.surfacePressed }} accessibilityLabel="Tartılma hatırlatıcısı" />
+            <Switch value={s.weigh.on} onValueChange={(v) => toggle('weigh', v)} trackColor={{ true: t.primary, false: t.surfacePressed }} accessibilityLabel={_('reminderSettings.weigh_in_reminder')} />
           </View>
           {s.weigh.on && (
             <>
               <View style={styles.wrap}>
-                {WEEKDAY_SHORT.map((d, i) => (
+                {weekdayShort().map((d, i) => (
                   <Chip key={d} label={d} active={s.weigh.day === i} onPress={() => commit({ ...s, weigh: { ...s.weigh, day: i } })} />
                 ))}
               </View>
               <TimeRow value={s.weigh} onChange={(v) => commit({ ...s, weigh: { ...s.weigh, ...v } })} />
               <T variant="caption" muted>
-                {WEEKDAY_NAMES[s.weigh.day]} {formatTime(s.weigh)}
+                {weekdayNames()[s.weigh.day]} {formatTime(s.weigh)}
               </T>
             </>
           )}
@@ -151,19 +147,15 @@ export function ReminderSettingsSection() {
         <View style={{ gap: Spacing.md }}>
           <View style={styles.toggleRow}>
             <View style={{ flex: 1 }}>
-              <T variant="label">Öğün kaydı</T>
-              <T variant="caption" muted>
-                Her akşam
-              </T>
+              <T variant="label">{_('reminderSettings.meal_logging')}</T>
+              <T variant="caption" muted>{_('reminderSettings.every_evening')}</T>
             </View>
-            <Switch value={s.meal.on} onValueChange={(v) => toggle('meal', v)} trackColor={{ true: t.primary, false: t.surfacePressed }} accessibilityLabel="Öğün kaydı hatırlatıcısı" />
+            <Switch value={s.meal.on} onValueChange={(v) => toggle('meal', v)} trackColor={{ true: t.primary, false: t.surfacePressed }} accessibilityLabel={_('reminderSettings.meal_logging_reminder')} />
           </View>
           {s.meal.on && <TimeRow value={s.meal} onChange={(v) => commit({ ...s, meal: { ...s.meal, ...v } })} />}
         </View>
 
-        <T variant="caption" muted style={{ fontFamily: Font.regular }}>
-          Bildirimler bu telefonda yerel olarak planlanır; internet ya da hesap gerekmez.
-        </T>
+        <T variant="caption" muted style={{ fontFamily: Font.regular }}>{_('reminderSettings.notifications_are_scheduled')}</T>
       </Card>
     </>
   );

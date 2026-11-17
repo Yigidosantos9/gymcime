@@ -1,4 +1,5 @@
 import { MUSCLES } from '@/db/seed';
+import { t } from '@/i18n';
 import { startOfDay } from '@/lib/format';
 
 /** Her kas grubu için toparlanma durumu. */
@@ -42,10 +43,10 @@ export function fatigueValues(rec: MuscleRecovery[], recoveryDays: number) {
 }
 
 export function restLabel(r: MuscleRecovery) {
-  if (r.daysRested == null) return 'Henüz çalışmadı';
-  if (r.daysRested === 0) return 'Bugün çalıştı';
-  if (r.daysRested === 1) return 'Dün çalıştı';
-  return `${r.daysRested} gündür dinleniyor`;
+  if (r.daysRested == null) return t('recovery.never');
+  if (r.daysRested === 0) return t('recovery.today');
+  if (r.daysRested === 1) return t('recovery.yesterday');
+  return t('recovery.days', { count: r.daysRested });
 }
 
 /** Rutindeki kaslardan henüz toparlanmamış olanlar. */

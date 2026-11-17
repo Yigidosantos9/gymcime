@@ -8,12 +8,13 @@ import { Icon } from '@/components/icon';
 import { useSheet } from '@/components/sheet';
 import { Badge, Button, Card, Divider, SectionHeader, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
-import { getExerciseMedia, muscleTr } from '@/db/exercise-media';
+import { getExerciseMedia, muscleName } from '@/db/exercise-media';
 import type { Exercise } from '@/db/queries';
 import { useTheme } from '@/hooks/use-theme';
 import { generateGuide, getCachedGuide, hasApiKey, type ExerciseGuide } from '@/lib/ai';
 import { AiError } from '@/lib/ai-core';
 import { useSQLiteContext } from 'expo-sqlite';
+import { useLanguage, useT } from '@/components/language-provider';
 
 /** İki poz arasında yumuşak geçiş (~1,2 sn döngü). */
 function PoseAnimation({ images }: { images: [number, number] }) {
@@ -72,30 +73,32 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-/** "Nasıl yapılır": görseller + (varsa) Türkçe talimatlar + AI Türkçe rehberi. */
+/** "Nasıl yapılır": görseller + (varsa) seçili dilde adımlar + AI rehberi (seçili dilde). */
 export function ExerciseGuideCard({ exercise }: { exercise: Exercise }) {
+  const _ = useT();
+  const { lang } = useLanguage();
   const t = useTheme();
   const media = getExerciseMedia(exercise.slug);
   return (
     <>
       {media && (
         <>
-          <SectionHeader title="Nasıl yapılır" />
+          <SectionHeader title={_('exerciseGuide.how_to')} />
           <Card style={{ gap: Spacing.md }}>
             <PoseAnimation images={media.images} />
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
               {media.primary.map((m) => (
-                <Badge key={m} label={muscleTr(m)} tint={t.primary} bg={t.primarySoft} icon="target" />
+                <Badge key={m} label={muscleName(m)} tint={t.primary} bg={t.primarySoft} icon="target" />
               ))}
               {media.secondary.map((m) => (
-                <Badge key={m} label={muscleTr(m)} tint={t.textSecondary} bg={t.surfacePressed} />
+                <Badge key={m} label={muscleName(m)} tint={t.textSecondary} bg={t.surfacePressed} />
               ))}
             </View>
-            {media.instructions.length > 0 && (
+            {media.steps[lang].length > 0 && (
               <>
                 <Divider />
-                <Block title="Adımlar">
-                  <Bullets items={media.instructions} numbered />
+                <Block title={_('exerciseGuide.steps')}>
+                  <Bullets items={media.steps[lang]} numbered />
                 </Block>
               </>
             )}
@@ -108,6 +111,8 @@ export function ExerciseGuideCard({ exercise }: { exercise: Exercise }) {
 }
 
 function AiGuide({ exercise, showHeader }: { exercise: Exercise; showHeader: boolean }) {
+  const _ = useT();
+  const { lang } = useLanguage();
   const t = useTheme();
   const db = useSQLiteContext();
   const sheet = useSheet();
@@ -119,7 +124,7 @@ function AiGuide({ exercise, showHeader }: { exercise: Exercise; showHeader: boo
   useEffect(() => {
     let alive = true;
     (async () => {
-      const [k, cached] = await Promise.all([hasApiKey(), getCachedGuide(db, exercise.id)]);
+      const [k, cached] = await Promise.all([hasApiKey(), getCachedGuide(db, exercise.id, lang)]);
       if (!alive) return;
       setKeyOk(k);
       setGuide(cached?.guide ?? null);
@@ -127,7 +132,7 @@ function AiGuide({ exercise, showHeader }: { exercise: Exercise; showHeader: boo
     return () => {
       alive = false;
     };
-  }, [db, exercise.id]);
+  }, [db, exercise.id, lang]);
 
   const run = useCallback(
     async (force: boolean) => {
@@ -136,27 +141,27 @@ function AiGuide({ exercise, showHeader }: { exercise: Exercise; showHeader: boo
       try {
         setGuide(await generateGuide(db, exercise, { force }));
       } catch (e) {
-        setError(e instanceof AiError ? e.userMessage : 'Beklenmeyen bir hata oluştu.');
+        setError(e instanceof AiError ? e.userMessage : _('exerciseGuide.an_unexpected_error_occurred'));
         if (e instanceof AiError && e.kind === 'no-key') setKeyOk(false);
       } finally {
         setBusy(false);
       }
     },
-    [db, exercise],
+    [db, exercise, _],
   );
 
   const regenerate = () =>
     sheet.actions({
-      title: 'Rehber yeniden oluşturulsun mu?',
-      message: 'Yeni bir yapay zeka isteği gönderilir (ücretli) ve mevcut rehberin yerini alır.',
-      actions: [{ label: 'Yeniden oluştur', icon: 'restart', style: 'primary', onPress: () => run(true) }],
+      title: _('exerciseGuide.regenerate_the_guide'),
+      message: _('exerciseGuide.a_new_ai_request_is'),
+      actions: [{ label: _('exerciseGuide.regenerate'), icon: 'restart', style: 'primary', onPress: () => run(true) }],
     });
 
   if (keyOk === null) return null;
 
   return (
     <>
-      <SectionHeader title="Yapay zeka rehberi" />
+      <SectionHeader title={_('exerciseGuide.ai_guide')} />
       {!guide ? (
         <Card style={{ gap: Spacing.md }}>
           <View style={{ flexDirection: 'row', gap: Spacing.md, alignItems: 'center' }}>
@@ -164,10 +169,8 @@ function AiGuide({ exercise, showHeader }: { exercise: Exercise; showHeader: boo
               <Icon name="sparkles" size={20} color={t.violet} />
             </View>
             <View style={{ flex: 1 }}>
-              <T variant="heading">Türkçe uygulama rehberi</T>
-              <T variant="caption" secondary>
-                Kurulum, kritik açılar, nefes, sık hatalar ve kişisel ipuçları. Bir kez üretilir, sonra cihazda saklanır.
-              </T>
+              <T variant="heading">{_('exerciseGuide.execution_guide')}</T>
+              <T variant="caption" secondary>{_('exerciseGuide.setup_key_angles_breathing_common')}</T>
             </View>
           </View>
           {error && (
@@ -176,50 +179,47 @@ function AiGuide({ exercise, showHeader }: { exercise: Exercise; showHeader: boo
             </T>
           )}
           {keyOk ? (
-            <Button title="Rehberi oluştur" icon="sparkles" onPress={() => run(false)} loading={busy} />
+            <Button title={_('exerciseGuide.generate_guide')} icon="sparkles" onPress={() => run(false)} loading={busy} />
           ) : (
-            <Button title="API anahtarı ekle" icon="add" kind="secondary" onPress={() => router.push('/settings')} />
+            <Button title={_('exerciseGuide.add_api_key')} icon="add" kind="secondary" onPress={() => router.push('/settings')} />
           )}
           {showHeader && !keyOk && (
-            <T variant="caption" muted style={{ textAlign: 'center' }}>
-              Anahtarı Ayarlar → Yapay zeka bölümünden girersin.
-            </T>
+            <T variant="caption" muted style={{ textAlign: 'center' }}>{_('exerciseGuide.you_enter_the_key_in')}</T>
           )}
         </Card>
       ) : (
         <Card style={{ gap: Spacing.lg }}>
           {guide.setup.length > 0 && (
-            <Block title="Kurulum">
+            <Block title={_('exerciseGuide.setup')}>
               <Bullets items={guide.setup} />
             </Block>
           )}
-          <Block title="Uygulama">
+          <Block title={_('exerciseGuide.execution')}>
             <Bullets items={guide.steps} numbered />
           </Block>
           {guide.keyAngles.length > 0 && (
-            <Block title="Kritik açılar">
+            <Block title={_('exerciseGuide.key_angles')}>
               <Bullets items={guide.keyAngles} />
             </Block>
           )}
-          <Block title="Nefes">
+          <Block title={_('exerciseGuide.breathing')}>
             <T>{guide.breathing}</T>
           </Block>
-          <Block title="Sık yapılan 3 hata">
+          <Block title={_('exerciseGuide.3_common_mistakes')}>
             <View style={{ gap: 10 }}>
               {guide.mistakes.map((m, i) => (
                 <View key={i} style={[styles.mistake, { backgroundColor: t.surfacePressed }]}>
                   <T variant="label" color={t.danger}>
                     {m.mistake}
                   </T>
-                  <T variant="label" color={t.success}>
-                    Düzeltme: {m.fix}
+                  <T variant="label" color={t.success}>{_('exerciseGuide.fix', { fix: m.fix })}
                   </T>
                 </View>
               ))}
             </View>
           </Block>
           {guide.feel.length > 0 && (
-            <Block title="Hissetmen gereken kaslar">
+            <Block title={_('exerciseGuide.muscles_you_should_feel')}>
               <Bullets items={guide.feel} />
             </Block>
           )}
@@ -227,9 +227,7 @@ function AiGuide({ exercise, showHeader }: { exercise: Exercise; showHeader: boo
             <View style={[styles.tips, { backgroundColor: t.violetSoft }]}>
               <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
                 <Icon name="person" size={13} color={t.violet} />
-                <T variant="overline" color={t.violet}>
-                  Sana özel
-                </T>
+                <T variant="overline" color={t.violet}>{_('exerciseGuide.just_for_you')}</T>
               </View>
               <Bullets items={guide.personalTips} />
             </View>
@@ -245,7 +243,7 @@ function AiGuide({ exercise, showHeader }: { exercise: Exercise; showHeader: boo
               {error}
             </T>
           )}
-          <Button title="Yeniden oluştur" icon="restart" kind="ghost" small onPress={regenerate} loading={busy} />
+          <Button title={_('exerciseGuide.regenerate')} icon="restart" kind="ghost" small onPress={regenerate} loading={busy} />
         </Card>
       )}
     </>

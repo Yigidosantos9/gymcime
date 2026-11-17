@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { SEED_EXERCISES, seedKind } from './seed';
 
 /** Güncel şema sürümü (PRAGMA user_version). Yedek dosyaları da bu sürümü taşır. */
-export const DB_VERSION = 10;
+export const DB_VERSION = 11;
 
 /** Ağır bileşik hareketler: varsayılan 3 dk dinlenme. */
 const HEAVY = ['squat', 'front-squat', 'deadlift', 'bench', 'incline-bench', 'ohp', 'rdl', 'bb-row', 'hip-thrust', 'hack-squat', 'leg-press', 'pullup', 'dips', 'cgbp'];
@@ -294,6 +294,26 @@ export async function migrateDb(db: SQLiteDatabase) {
     // (bitirirken yapılmamış setler/egzersizler silindiği için yapı bitişten ÖNCE saklanır)
     await addColumn(db, 'workouts', 'routine_shape', 'TEXT');
     version = 10;
+    await setVersion(db, version);
+  }
+
+  if (version < 11) {
+    // AI rehber önbelleği dile göre ayrı tutulur: (egzersiz, dil) birlikte anahtar; mevcut rehberler 'tr' olur
+    await db.execAsync(`
+      ALTER TABLE exercise_guides RENAME TO exercise_guides_old;
+      CREATE TABLE exercise_guides (
+        exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
+        lang TEXT NOT NULL DEFAULT 'tr',
+        json TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        model TEXT,
+        PRIMARY KEY (exercise_id, lang)
+      );
+      INSERT INTO exercise_guides (exercise_id, lang, json, created_at, model)
+        SELECT exercise_id, 'tr', json, created_at, model FROM exercise_guides_old;
+      DROP TABLE exercise_guides_old;
+    `);
+    version = 11;
     await setVersion(db, version);
   }
 }

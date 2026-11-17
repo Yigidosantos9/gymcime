@@ -1,12 +1,15 @@
 import { ROUTINE_TEMPLATES } from '@/db/seed';
+import { localeData, t, type MsgKey } from '@/i18n';
+import { routineLabel } from '@/i18n/labels';
 import { startOfDay, startOfWeek } from '@/lib/format';
 
 /** Haftalık plan yardımcıları (saf). Hafta Pazartesi başlar: 0 = Pazartesi … 6 = Pazar. */
 
-export const WEEKDAY_NAMES = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
-export const WEEKDAY_SHORT = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
-export const WEEKDAY_LETTER = ['P', 'S', 'Ç', 'P', 'C', 'C', 'P'];
-export const MONTH_NAMES = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+/** Geçerli dilde gün/ay adları (Pazartesi başlangıçlı; çağrı anında hesaplanır — dil değişince güncel). */
+export const weekdayNames = () => [1, 2, 3, 4, 5, 6, 0].map((i) => localeData().days[i]);
+export const weekdayShort = () => [1, 2, 3, 4, 5, 6, 0].map((i) => localeData().daysShort[i]);
+export const weekdayLetters = () => weekdayShort().map((s) => s[0]);
+export const monthNames = () => [...localeData().months];
 
 /** Zaman damgasının haftanın hangi günü olduğu (yerel saat dilimi; 0 = Pazartesi). */
 export function weekdayOf(ts: number) {
@@ -106,24 +109,25 @@ export function muscleFrequency(dayMuscles: string[][]) {
 /** Rutin adından takvimde gösterilecek kısa etiket (ilk kelime, en çok `max` harf). */
 export function shortRoutineName(name: string | null | undefined, max = 5) {
   if (!name) return '';
-  const first = name.trim().split(/\s+/)[0] ?? '';
+  const first = routineLabel(name.trim()).split(/\s+/)[0] ?? '';
   return first.length > max ? first.slice(0, max - 1) + '.' : first;
 }
 
 export type WeekTemplate = {
   key: string;
-  label: string;
-  hint: string;
+  /** geçerli dilde başlık / açıklama (getter) */
+  readonly label: string;
+  readonly hint: string;
   source: keyof typeof ROUTINE_TEMPLATES;
   /** gün (0-6) → şablon rutin adı (ROUTINE_TEMPLATES) */
   days: Record<number, string>;
 };
 
 export const WEEK_TEMPLATES: WeekTemplate[] = [
-  { key: 'ppl3', label: 'PPL · 3 gün', hint: 'Pzt Push · Çar Pull · Cum Legs', source: 'ppl', days: { 0: 'Push', 2: 'Pull', 4: 'Legs' } },
-  { key: 'ppl6', label: 'PPL · 6 gün', hint: 'Push/Pull/Legs iki tur, Pazar dinlenme', source: 'ppl', days: { 0: 'Push', 1: 'Pull', 2: 'Legs', 3: 'Push', 4: 'Pull', 5: 'Legs' } },
-  { key: 'ul4', label: 'Üst / Alt · 4 gün', hint: 'Pzt Üst · Sal Alt · Per Üst · Cum Alt', source: 'upperlower', days: { 0: 'Üst Vücut', 1: 'Alt Vücut', 3: 'Üst Vücut', 4: 'Alt Vücut' } },
-  { key: 'fb3', label: 'Full Body · 3 gün', hint: 'Pzt A · Çar B · Cum A', source: 'full', days: { 0: 'Full Body A', 2: 'Full Body B', 4: 'Full Body A' } },
+  { key: 'ppl3', get label() { return t('week.tpl.ppl3' as MsgKey); }, get hint() { return t('week.tpl.ppl3.hint' as MsgKey); }, source: 'ppl', days: { 0: 'Push', 2: 'Pull', 4: 'Legs' } },
+  { key: 'ppl6', get label() { return t('week.tpl.ppl6' as MsgKey); }, get hint() { return t('week.tpl.ppl6.hint' as MsgKey); }, source: 'ppl', days: { 0: 'Push', 1: 'Pull', 2: 'Legs', 3: 'Push', 4: 'Pull', 5: 'Legs' } },
+  { key: 'ul4', get label() { return t('week.tpl.ul4' as MsgKey); }, get hint() { return t('week.tpl.ul4.hint' as MsgKey); }, source: 'upperlower', days: { 0: 'Üst Vücut', 1: 'Alt Vücut', 3: 'Üst Vücut', 4: 'Alt Vücut' } },
+  { key: 'fb3', get label() { return t('week.tpl.fb3' as MsgKey); }, get hint() { return t('week.tpl.fb3.hint' as MsgKey); }, source: 'full', days: { 0: 'Full Body A', 2: 'Full Body B', 4: 'Full Body A' } },
 ];
 
 /** Şablon + (ad → rutin id) haritasından 7 günlük atama (boş gün = null). */

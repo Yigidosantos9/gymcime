@@ -9,7 +9,8 @@ const ThemeCtx = createContext<{
   theme: Palette;
   preference: ThemePreference;
   setPreference: (p: ThemePreference) => void;
-}>({ theme: Colors.dark, preference: 'dark', setPreference: () => {} });
+  reload: () => Promise<void>;
+}>({ theme: Colors.dark, preference: 'dark', setPreference: () => {}, reload: async () => {} });
 
 /** SQLiteProvider'ın içinde olmalı: tercih veritabanında saklanır. */
 export function AppThemeProvider({ children }: { children: ReactNode }) {
@@ -31,8 +32,14 @@ export function AppThemeProvider({ children }: { children: ReactNode }) {
     [db],
   );
 
+  /** Veri silme / yedek içe aktarma sonrası kayıtlı temayı yeniden okur. */
+  const reload = useCallback(async () => {
+    const v = await getSetting(db, 'theme');
+    setPref(v === 'light' || v === 'dark' || v === 'system' ? v : 'dark');
+  }, [db]);
+
   const resolved = preference === 'system' ? (system === 'light' ? 'light' : 'dark') : preference;
-  const value = useMemo(() => ({ theme: Colors[resolved], preference, setPreference }), [resolved, preference, setPreference]);
+  const value = useMemo(() => ({ theme: Colors[resolved], preference, setPreference, reload }), [resolved, preference, setPreference, reload]);
   return <ThemeCtx.Provider value={value}>{children}</ThemeCtx.Provider>;
 }
 

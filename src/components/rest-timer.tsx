@@ -12,6 +12,7 @@ import { formatDuration } from '@/lib/format';
 import { getProfile } from '@/db/queries';
 import { haptic } from '@/lib/haptics';
 import { sounds } from '@/lib/sounds';
+import { useT } from '@/components/language-provider';
 
 // Uygulama öndeyken bildirimi gösterme (sayaç zaten ekranda); yalnızca arka planda görünür.
 if (Platform.OS !== 'web') {
@@ -57,6 +58,7 @@ async function ensurePermission() {
 }
 
 export function RestTimerProvider({ children }: { children: ReactNode }) {
+  const _ = useT();
   const db = useSQLiteContext();
   const [rest, setRest] = useState<RestState>(null);
   const [prefs, setPrefs] = useState<Prefs>({ soundOn: true, hapticOn: true });
@@ -86,8 +88,8 @@ export function RestTimerProvider({ children }: { children: ReactNode }) {
       try {
         const id = await Notifications.scheduleNotificationAsync({
           content: {
-            title: 'Mola bitti 💪',
-            body: next ? `Sıradaki: ${next}` : 'Sıradaki sete geç!',
+            title: _('restTimer.rest_over'),
+            body: next ? _('restTimer.next', { next: next }) : _('restTimer.on_to_the_next_set'),
             sound: soundOn,
           },
           trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds },
@@ -105,7 +107,7 @@ export function RestTimerProvider({ children }: { children: ReactNode }) {
         notifId.current = null;
       }
     },
-    [cancelNotif],
+    [cancelNotif, _],
   );
 
   const start = useCallback(
@@ -166,12 +168,13 @@ export function RestTimerProvider({ children }: { children: ReactNode }) {
 
 export function useRestTimer() {
   const v = useContext(RestCtx);
-  if (!v) throw new Error('RestTimerProvider eksik');
+  if (!v) throw new Error('RestTimerProvider missing');
   return v;
 }
 
 /** Antrenman ekranının altında yüzen dinlenme sayacı. */
 export function RestTimerBar({ bottom }: { bottom: number }) {
+  const _ = useT();
   const t = useTheme();
   const { rest, prefs, adjust, stop } = useRestTimer();
   const [now, setNow] = useState(() => Date.now());
@@ -216,15 +219,12 @@ export function RestTimerBar({ bottom }: { bottom: number }) {
         <Icon name="timer" size={18} color={almost ? t.accent : t.primary} />
       </Ring>
       <View style={{ flex: 1 }}>
-        <T variant="overline" secondary>
-          Dinlenme
-        </T>
+        <T variant="overline" secondary>{_('restTimer.rest')}</T>
         <T variant="num" style={{ fontSize: 28, lineHeight: 32 }} color={almost ? t.accent : t.text}>
           {formatDuration(left)}
         </T>
         {rest.next && (
-          <T variant="caption" muted numberOfLines={1}>
-            Sıradaki: {rest.next}
+          <T variant="caption" muted numberOfLines={1}>{_('restTimer.next', { next: rest.next })}
           </T>
         )}
       </View>

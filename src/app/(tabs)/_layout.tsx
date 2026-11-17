@@ -8,8 +8,10 @@ import { Font } from '@/constants/theme';
 import { getProfile } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/components/language-provider';
 
 export default function TabsLayout() {
+  const _ = useT();
   const t = useTheme();
   const { data: profile } = useDbQuery(getProfile);
 
@@ -38,23 +40,23 @@ export default function TabsLayout() {
       minimizeBehavior="onScrollDown"
       backBehavior="initialRoute">
       <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Bugün</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{_('common.today')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={home.sf} md={home.md} />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="routines">
-        <NativeTabs.Trigger.Label>Rutinler</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{_('common.routines')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={routines.sf} md={routines.md} />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="history">
-        <NativeTabs.Trigger.Label>Geçmiş</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{_('common.history')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={history.sf} md={history.md} />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="progress">
-        <NativeTabs.Trigger.Label>İlerleme</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{_('common.progress')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={progress.sf} md={progress.md} />
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="nutrition">
-        <NativeTabs.Trigger.Label>Beslenme</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>{_('common.nutrition')}</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={nutrition.sf} md={nutrition.md} />
       </NativeTabs.Trigger>
     </NativeTabs>

@@ -3,6 +3,7 @@ import Svg, { Circle, Ellipse, G, Line, Rect } from 'react-native-svg';
 
 import { T } from '@/components/ui';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/components/language-provider';
 
 /**
  * Stilize ön/arka vücut haritası. Her kas grubu 0–1 arası bir değerle boyanır.
@@ -100,22 +101,19 @@ function Figure({
 }
 
 export function BodyMap({ values, size = 220, labels = true }: { values: MuscleValues; size?: number; labels?: boolean }) {
+  const _ = useT();
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'center', gap: size * 0.08 }}>
       <View style={{ alignItems: 'center', gap: 4 }}>
         <Figure side="front" values={values} size={size} />
         {labels && (
-          <T variant="caption" muted>
-            Ön
-          </T>
+          <T variant="caption" muted>{_('bodyMap.front')}</T>
         )}
       </View>
       <View style={{ alignItems: 'center', gap: 4 }}>
         <Figure side="back" values={values} size={size} />
         {labels && (
-          <T variant="caption" muted>
-            Arka
-          </T>
+          <T variant="caption" muted>{_('bodyMap.back2')}</T>
         )}
       </View>
     </View>
@@ -159,18 +157,15 @@ export function MuscleIcon({ muscle, size = 40 }: { muscle: string; size?: numbe
 
 /** Kas → 0-1 yoğunluk için legend. */
 export function HeatLegend() {
+  const _ = useT();
   const t = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
-      <T variant="caption" muted>
-        Az
-      </T>
+      <T variant="caption" muted>{_('bodyMap.low')}</T>
       {t.heat.map((c) => (
         <View key={c} style={{ width: 16, height: 8, borderRadius: 4, backgroundColor: c }} />
       ))}
-      <T variant="caption" muted>
-        Çok
-      </T>
+      <T variant="caption" muted>{_('bodyMap.high')}</T>
     </View>
   );
 }

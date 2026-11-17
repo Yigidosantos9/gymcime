@@ -6,6 +6,10 @@
  * Tutarlılık: kcal ≈ 4·protein + 4·karbonhidrat + 9·yağ (tests/foods-tr.test.ts denetler).
  */
 
+import { t, type MsgKey } from '@/i18n';
+
+import { FOOD_NAMES_EN } from './foods-en';
+
 export type FoodCategoryId =
   | 'kahvalti'
   | 'ekmek'
@@ -23,29 +27,24 @@ export type FoodCategoryId =
   | 'fastfood'
   | 'takviye';
 
-export const FOOD_CATEGORIES: { id: FoodCategoryId; label: string }[] = [
-  { id: 'kahvalti', label: 'Kahvaltılık' },
-  { id: 'ekmek', label: 'Ekmek & hamur' },
-  { id: 'et', label: 'Et, tavuk, balık' },
-  { id: 'baklagil', label: 'Baklagil' },
-  { id: 'sebze', label: 'Sebze & salata' },
-  { id: 'corba', label: 'Çorbalar' },
-  { id: 'pilav', label: 'Pilav & makarna' },
-  { id: 'ev', label: 'Ev yemekleri' },
-  { id: 'meyve', label: 'Meyve' },
-  { id: 'kuruyemis', label: 'Kuruyemiş' },
-  { id: 'sut', label: 'Süt ürünleri' },
-  { id: 'tatli', label: 'Tatlılar' },
-  { id: 'icecek', label: 'İçecekler' },
-  { id: 'fastfood', label: 'Fast food' },
-  { id: 'takviye', label: 'Takviyeler' },
-];
+const FOOD_CATEGORY_IDS: FoodCategoryId[] = ['kahvalti', 'ekmek', 'et', 'baklagil', 'sebze', 'corba', 'pilav', 'ev', 'meyve', 'kuruyemis', 'sut', 'tatli', 'icecek', 'fastfood', 'takviye'];
+
+/** Kategori adları geçerli dilde (getter: dil değişince güncel). */
+export const FOOD_CATEGORIES: { id: FoodCategoryId; readonly label: string }[] = FOOD_CATEGORY_IDS.map((id) => ({
+  id,
+  get label() {
+    return t(`foodCat.${id}` as MsgKey);
+  },
+}));
+
 
 export type FoodPortion = { label: string; grams: number };
 
 export type FoodTr = {
   id: string;
   name: string;
+  /** İngilizce ad (arama ve gösterim) */
+  nameEn: string;
   aliases: string[];
   category: FoodCategoryId;
   /** 'g' (katı) veya 'ml' (sıvı) — değerler 100 birim başınadır */
@@ -536,6 +535,7 @@ export const FOODS_TR: FoodTr[] = ROWS.map(([name, aliases, category, kcal, prot
   return {
     id: slugify(name),
     name,
+    nameEn: FOOD_NAMES_EN[slugify(name)] ?? name,
     aliases: aliases.split('|').filter(Boolean),
     category,
     unit,

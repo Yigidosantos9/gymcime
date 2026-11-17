@@ -17,9 +17,12 @@ import { useTheme } from '@/hooks/use-theme';
 import { EXERCISE_KINDS, type ExerciseKind } from '@/lib/cardio';
 import { filterExercises } from '@/lib/exercise-library';
 import { haptic } from '@/lib/haptics';
+import { useT } from '@/components/language-provider';
+import { equipmentLabel, muscleLabel } from '@/i18n/labels';
 
 /** Egzersiz kütüphanesi: hiç yapılmamış hareketler dahil tüm egzersizler. */
 export default function ExerciseLibrary() {
+  const _ = useT();
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const { data: exercises, reload } = useDbQuery(listExercises);
@@ -38,25 +41,25 @@ export default function ExerciseLibrary() {
           <TextInput
             value={q}
             onChangeText={setQ}
-            placeholder="Ara: bench, sırt, triceps…"
+            placeholder={_('exercises.search_bench_back_triceps')}
             placeholderTextColor={t.textMuted}
             style={{ flex: 1, color: t.text, fontSize: 16, fontFamily: Font.medium }}
             autoCorrect={false}
           />
           {q.length > 0 && (
-            <PressableScale onPress={() => setQ('')} hitSlop={8} accessibilityLabel="Aramayı temizle">
+            <PressableScale onPress={() => setQ('')} hitSlop={8} accessibilityLabel={_('common.clear_search')}>
               <Icon name="close" size={14} color={t.textMuted} />
             </PressableScale>
           )}
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: Spacing.lg }} style={{ marginHorizontal: -Spacing.lg, flexGrow: 0 }}>
-          <Chip label="Tüm kaslar" active={!muscle} onPress={() => setMuscle(null)} />
+          <Chip label={_('exercises.all_muscles')} active={!muscle} onPress={() => setMuscle(null)} />
           {MUSCLES.map((m) => (
-            <Chip key={m} label={m} active={muscle === m} onPress={() => setMuscle(muscle === m ? null : m)} />
+            <Chip key={m} label={muscleLabel(m)} active={muscle === m} onPress={() => setMuscle(muscle === m ? null : m)} />
           ))}
         </ScrollView>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: Spacing.lg }} style={{ marginHorizontal: -Spacing.lg, flexGrow: 0 }}>
-          <Chip label="Tüm türler" active={!kind} onPress={() => setKind(null)} />
+          <Chip label={_('exercises.all_types')} active={!kind} onPress={() => setKind(null)} />
           {EXERCISE_KINDS.map((k) => (
             <Chip key={k.key} label={k.label} active={kind === k.key} onPress={() => setKind(kind === k.key ? null : k.key)} />
           ))}
@@ -72,27 +75,24 @@ export default function ExerciseLibrary() {
         ListHeaderComponent={
           exercises ? (
             <T variant="caption" secondary style={{ marginBottom: Spacing.sm }}>
-              {filtered.length} egzersiz
-            </T>
+              {_('common.exercises2', { count: filtered.length })}</T>
           ) : undefined
         }
         ListEmptyComponent={
           <View style={{ alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.xl }}>
-            <T secondary>Eşleşen egzersiz yok.</T>
+            <T secondary>{_('exercises.no_matching_exercises')}</T>
           </View>
         }
         ListFooterComponent={
           <View style={{ marginTop: Spacing.md }}>
             {!creating ? (
-              <Button title={q.trim().length > 1 ? `“${q.trim()}” oluştur` : 'Özel egzersiz oluştur'} icon="add" kind="secondary" onPress={() => setCreating(true)} />
+              <Button title={q.trim().length > 1 ? _('common.create', { v: q.trim() }) : _('exercises.create_custom_exercise')} icon="add" kind="secondary" onPress={() => setCreating(true)} />
             ) : q.trim().length < 2 ? (
-              <T secondary style={{ textAlign: 'center' }}>
-                Önce arama kutusuna yeni egzersizin adını yaz.
-              </T>
+              <T secondary style={{ textAlign: 'center' }}>{_('exercises.first_type_the_new_exercise')}</T>
             ) : (
               <CreateExerciseForm
                 name={q}
-                submitLabel="Oluştur"
+                submitLabel={_('exercises.create')}
                 onCreated={async (id) => {
                   await reload();
                   haptic.success();
@@ -121,8 +121,8 @@ export default function ExerciseLibrary() {
                   {item.name}
                 </T>
                 <T variant="caption" secondary numberOfLines={1}>
-                  {item.muscle} · {item.equipment}
-                  {item.kind === 'cardio' ? ' · kardiyo' : item.kind === 'timed' ? ' · süreli' : item.kind === 'bodyweight' ? ' · vücut ağırlığı' : ''}
+                  {muscleLabel(item.muscle)} · {equipmentLabel(item.equipment)}
+                  {item.kind === 'cardio' ? _('exercises.cardio') : item.kind === 'timed' ? _('common.timed') : item.kind === 'bodyweight' ? _('exercises.bodyweight') : ''}
                 </T>
               </View>
               <Icon name="chevronRight" size={12} color={t.textMuted} />

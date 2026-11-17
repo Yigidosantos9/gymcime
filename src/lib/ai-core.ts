@@ -3,6 +3,8 @@
  * istek kurma, yanıt ayrıştırma ve şema doğrulama. Node testleri bunu doğrudan çalıştırır.
  * API anahtarı burada ASLA tutulmaz; anahtarı `ai.ts` SecureStore'dan okur.
  */
+import { t, type Lang, type MsgKey } from '@/i18n';
+
 import { loadAnthropic } from './anthropic-sdk';
 
 // ───────────────────────── Modeller ─────────────────────────
@@ -30,26 +32,18 @@ export function parseModelPref(v: string | null | undefined): ModelPref {
 
 export type AiErrorKind = 'no-key' | 'auth' | 'network' | 'rate' | 'refusal' | 'truncated' | 'invalid' | 'other';
 
-const MESSAGES: Record<AiErrorKind, string> = {
-  'no-key': 'Önce Ayarlar → Yapay zeka bölümünden API anahtarını ekle.',
-  auth: 'API anahtarı geçersiz görünüyor. Ayarlar → Yapay zeka bölümünden kontrol et.',
-  network: 'Bağlantı kurulamadı. İnternetini kontrol edip tekrar dene.',
-  rate: 'Çok fazla istek gönderildi ya da kullanım limitine ulaşıldı. Biraz sonra tekrar dene.',
-  refusal: 'Yapay zeka bu isteği yanıtlamayı reddetti. Farklı bir şekilde tekrar dene.',
-  truncated: 'Yanıt yarım kaldı. Tekrar dene.',
-  invalid: 'Yapay zekadan beklenen biçimde yanıt gelmedi. Tekrar dene.',
-  other: 'Yapay zeka isteği başarısız oldu. Biraz sonra tekrar dene.',
-};
+/** Kullanıcıya gösterilen hata metni (oluşturulduğu andaki dilde). */
+const message = (kind: AiErrorKind) => t(`ai.err.${kind}` as MsgKey);
 
 export class AiError extends Error {
   readonly kind: AiErrorKind;
-  /** Kullanıcıya gösterilecek Türkçe mesaj */
+  /** Kullanıcıya gösterilecek (geçerli dilde) mesaj */
   readonly userMessage: string;
   constructor(kind: AiErrorKind, detail?: string) {
-    super(detail ?? MESSAGES[kind]);
+    super(detail ?? message(kind));
     this.name = 'AiError';
     this.kind = kind;
-    this.userMessage = MESSAGES[kind];
+    this.userMessage = message(kind);
   }
 }
 
@@ -61,8 +55,8 @@ export function toAiError(err: unknown): AiError {
   if (err instanceof Anthropic.RateLimitError) return new AiError('rate');
   if (err instanceof Anthropic.APIConnectionError) return new AiError('network'); // zaman aşımı dahil
   if (err instanceof Anthropic.APIError) {
-    if (err.status === 529 || (err.status != null && err.status >= 500)) return new AiError('other', `Servis hatası (${err.status})`);
-    return new AiError('other', `API hatası (${err.status ?? '?'})`);
+    if (err.status === 529 || (err.status != null && err.status >= 500)) return new AiError('other', t('ai.err.service', { status: err.status }));
+    return new AiError('other', t('ai.err.api', { status: err.status ?? '?' }));
   }
   return new AiError('other', err instanceof Error ? err.message : undefined);
 }
@@ -178,16 +172,18 @@ export function parseCachedGuide(json: string | null | undefined): ExerciseGuide
 export type GuideHistorySession = { started_at: number; best1rm: number; top_weight: number; sets: string };
 
 /** Kişisel ipucu için kısa, deterministik geçmiş özeti (yoksa null). */
-export function summarizeHistory(history: GuideHistorySession[], now = Date.now()): string | null {
+export function summarizeHistory(history: GuideHistorySession[], now = Date.now(), lang: Lang = 'tr'): string | null {
   if (history.length === 0) return null;
   const last = history.slice(-6);
   const lines = last.map((h) => {
     const days = Math.max(0, Math.round((now - h.started_at) / 86_400_000));
-    return `- ${days} gün önce: ${h.sets} (tahmini 1RM ${Math.round(h.best1rm * 2) / 2} kg)`;
+    return lang === 'en' ? `- ${days} days ago: ${h.sets} (estimated 1RM ${Math.round(h.best1rm * 2) / 2} kg)` : `- ${days} gün önce: ${h.sets} (tahmini 1RM ${Math.round(h.best1rm * 2) / 2} kg)`;
   });
   const recent = last.slice(-4);
   const plateau = recent.length >= 4 && Math.max(...recent.slice(1).map((s) => s.best1rm)) <= recent[0].best1rm * 1.005;
-  return `Kullanıcının bu egzersizdeki son seansları (set: kg x tekrar):\n${lines.join('\n')}${plateau ? '\nNot: son 4 seansta tahmini 1RM ilerlemedi (plato).' : ''}`;
+  return lang === 'en'
+    ? `The user's latest sessions for this exercise (sets: kg x reps):\n${lines.join('\n')}${plateau ? '\nNote: estimated 1RM has not progressed over the last 4 sessions (plateau).' : ''}`
+    : `Kullanıcının bu egzersizdeki son seansları (set: kg x tekrar):\n${lines.join('\n')}${plateau ? '\nNot: son 4 seansta tahmini 1RM ilerlemedi (plato).' : ''}`;
 }
 
 export const GUIDE_SYSTEM = `Sen deneyimli bir kuvvet antrenörüsün. Kullanıcı bir egzersiz adı verir; Türkçe, net ve güvenli bir uygulama rehberi üretirsin.
@@ -201,7 +197,24 @@ Kurallar:
 - Ağırlık/set sayısı gibi sayısal öneriler verme; bunlar uygulamada ayrı hesaplanır.
 - Tıbbi tanı koyma.`;
 
-export function guideUserPrompt(input: { name: string; muscle: string; equipment: string; history: string | null }) {
+export const GUIDE_SYSTEM_EN = `You are an experienced strength coach. The user gives an exercise name; you produce a clear, safe execution guide in English.
+Rules:
+- All text in English. Short, concrete sentences.
+- setup: setup steps (equipment adjustment, stance, grip). steps: step-by-step execution (in order).
+- keyAngles: key angles and positions, numeric where possible (e.g. "elbows about 45° from the torso").
+- breathing: a one-sentence breathing pattern. mistakes: exactly 3 common mistakes, each with its fix.
+- feel: the muscles that should be felt working. safety: a one-sentence safety note; refer to a doctor/professional for pain if needed.
+- personalTips: only if the user's history is provided, 1-2 personal tips (e.g. plateau, failure sets, weight increase); return an empty array if there is no history.
+- Do not give numeric recommendations such as weight/set counts; the app calculates those separately.
+- Do not diagnose medical conditions.`;
+
+/** Seçili dilde rehber sistem talimatı (sabit metin → prompt cache). */
+export const guideSystem = (lang: Lang) => (lang === 'en' ? GUIDE_SYSTEM_EN : GUIDE_SYSTEM);
+
+export function guideUserPrompt(input: { name: string; muscle: string; equipment: string; history: string | null }, lang: Lang = 'tr') {
+  if (lang === 'en') {
+    return [`Exercise: ${input.name}`, `Muscle group: ${input.muscle}`, `Equipment: ${input.equipment}`, input.history ?? 'The user has no history for this exercise.'].join('\n');
+  }
   return [
     `Egzersiz: ${input.name}`,
     `Kas grubu: ${input.muscle}`,
@@ -217,12 +230,12 @@ export const GUIDE_MAX_TOKENS = 4000;
  * Haiku 5.5 fallback desteklemediği için o modelde eklenmez. Sıcaklık/top_p gibi örnekleme parametreleri
  * bu modellerde 400 verdiği için hiç gönderilmez.
  */
-export function buildGuideRequest(model: string, prompt: string) {
+export function buildGuideRequest(model: string, prompt: string, lang: Lang = 'tr') {
   const smart = model === MODELS.smart;
   return {
     model,
     max_tokens: GUIDE_MAX_TOKENS,
-    system: [{ type: 'text' as const, text: GUIDE_SYSTEM, cache_control: { type: 'ephemeral' as const } }],
+    system: [{ type: 'text' as const, text: guideSystem(lang), cache_control: { type: 'ephemeral' as const } }],
     messages: [{ role: 'user' as const, content: prompt }],
     output_config: {
       effort: smart ? ('medium' as const) : ('low' as const),
@@ -276,6 +289,15 @@ export const MEAL_SCHEMA = {
   additionalProperties: false,
 } as const;
 
+export const MEAL_SYSTEM_EN = `You are a nutrition expert. You identify the foods in the meal photo and/or note the user sends and estimate portions.
+Rules:
+- Make each distinct food its own item (e.g. rice, chicken, salad). Names in English.
+- portion: the portion you estimate visually (e.g. "1 plate ≈ 200 g", "2 slices"). If the user's note gives a portion, rely on it.
+- kcal, protein, carbs, fat: TOTAL values for that portion (kcal and grams). Keep kcal consistent with the macros (protein 4, carbs 4, fat 9 kcal/g).
+- confidence: "low" if the portion or food is uncertain, "medium" if reasonable, "high" if clear.
+- note: one sentence about the uncertainty of the estimate or hidden items such as sauce/oil.
+- If there is no food in the photo, return an empty items array and say so in the note. This is an estimate; do not give medical advice.`;
+
 export const MEAL_SYSTEM = `Sen bir beslenme uzmanısın. Kullanıcının gönderdiği yemek fotoğrafındaki ve/veya notundaki yiyecekleri tanır, porsiyonları tahmin edersin.
 Kurallar:
 - Her ayrı yiyeceği ayrı kalem yap (ör. pilav, tavuk, salata). Adlar Türkçe olsun.
@@ -319,16 +341,19 @@ export function mealTier(input: MealEstimateInput): ModelTier {
 
 export const MEAL_MAX_TOKENS = 2000;
 
-export function buildMealRequest(model: string, input: MealEstimateInput) {
+export function buildMealRequest(model: string, input: MealEstimateInput, lang: Lang = 'tr') {
   const smart = model === MODELS.smart;
   const content: ({ type: 'image'; source: { type: 'base64'; media_type: 'image/jpeg'; data: string } } | { type: 'text'; text: string })[] = [];
   if (input.imageBase64) content.push({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: input.imageBase64 } });
   const note = input.note?.trim();
-  content.push({ type: 'text', text: note ? `Kullanıcı notu: ${note}` : 'Bu yemeğin kalori ve makro tahminini yap.' });
+  content.push({
+    type: 'text',
+    text: lang === 'en' ? (note ? `User note: ${note}` : 'Estimate the calories and macros of this meal.') : note ? `Kullanıcı notu: ${note}` : 'Bu yemeğin kalori ve makro tahminini yap.',
+  });
   return {
     model,
     max_tokens: MEAL_MAX_TOKENS,
-    system: [{ type: 'text' as const, text: MEAL_SYSTEM, cache_control: { type: 'ephemeral' as const } }],
+    system: [{ type: 'text' as const, text: lang === 'en' ? MEAL_SYSTEM_EN : MEAL_SYSTEM, cache_control: { type: 'ephemeral' as const } }],
     messages: [{ role: 'user' as const, content }],
     output_config: {
       effort: smart ? ('medium' as const) : ('low' as const),

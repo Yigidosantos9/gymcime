@@ -9,9 +9,12 @@ import { EQUIPMENT, MUSCLES } from '@/db/seed';
 import { useTheme } from '@/hooks/use-theme';
 import { EXERCISE_KINDS, type ExerciseKind } from '@/lib/cardio';
 import { useSQLiteContext } from 'expo-sqlite';
+import { useT } from '@/components/language-provider';
+import { equipmentLabel, muscleLabel } from '@/i18n/labels';
 
 /** Özel egzersiz oluşturma formu (egzersiz seçici ve kütüphane ortak kullanır). */
 export function CreateExerciseForm({ name, submitLabel, onCreated }: { name: string; submitLabel: string; onCreated: (id: number) => void | Promise<void> }) {
+  const _ = useT();
   const t = useTheme();
   const db = useSQLiteContext();
   const [muscle, setMuscle] = useState<string>(MUSCLES[0]);
@@ -26,10 +29,8 @@ export function CreateExerciseForm({ name, submitLabel, onCreated }: { name: str
 
   return (
     <Animated.View entering={FadeInDown} style={[styles.box, { backgroundColor: t.surfaceRaised, borderColor: t.border }]}>
-      <T variant="heading">Yeni egzersiz: {name.trim()}</T>
-      <T variant="overline" secondary>
-        Tür
-      </T>
+      <T variant="heading">{_('createExercise.new_exercise', { v: name.trim() })}</T>
+      <T variant="overline" secondary>{_('createExercise.type')}</T>
       <View style={styles.wrap}>
         {EXERCISE_KINDS.map((k) => (
           <Chip
@@ -48,20 +49,16 @@ export function CreateExerciseForm({ name, submitLabel, onCreated }: { name: str
       <T variant="caption" muted>
         {EXERCISE_KINDS.find((k) => k.key === kind)?.hint}
       </T>
-      <T variant="overline" secondary>
-        Kas grubu
-      </T>
+      <T variant="overline" secondary>{_('createExercise.muscle_group')}</T>
       <View style={styles.wrap}>
         {MUSCLES.map((m) => (
-          <Chip key={m} label={m} active={muscle === m} onPress={() => setMuscle(m)} />
+          <Chip key={m} label={muscleLabel(m)} active={muscle === m} onPress={() => setMuscle(m)} />
         ))}
       </View>
-      <T variant="overline" secondary>
-        Ekipman
-      </T>
+      <T variant="overline" secondary>{_('createExercise.equipment')}</T>
       <View style={styles.wrap}>
         {EQUIPMENT.map((m) => (
-          <Chip key={m} label={m} active={equip === m} onPress={() => setEquip(m)} />
+          <Chip key={m} label={equipmentLabel(m)} active={equip === m} onPress={() => setEquip(m)} />
         ))}
       </View>
       <Button title={submitLabel} icon="check" onPress={create} />

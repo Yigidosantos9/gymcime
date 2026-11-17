@@ -26,12 +26,15 @@ import {
   type ActivityLevel,
   type Sex,
 } from '@/lib/nutrition';
+import { useT } from '@/components/language-provider';
+import { decimalSep } from '@/i18n';
 
 const RATES = [-0.75, -0.5, -0.25, 0, 0.25, 0.5];
-const fmt = (n: number) => String(n).replace('.', ',');
+const fmt = (n: number) => String(n).replace('.', decimalSep());
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${fmt(Math.abs(n))}`;
 
 export default function BodyAnalysis() {
+  const _ = useT();
   const t = useTheme();
   const db = useSQLiteContext();
   const sheet = useSheet();
@@ -124,9 +127,9 @@ export default function BodyAnalysis() {
   const askSave = () => {
     if (calc?.target.clampedReason) {
       sheet.actions({
-        title: 'Hedef güvenli sınıra çekildi',
+        title: _('body.target_moved_to_the_safe'),
         message: calc.target.clampedReason,
-        actions: [{ label: 'Anladım, kaydet', style: 'primary', onPress: save }],
+        actions: [{ label: _('body.got_it_save'), style: 'primary', onPress: save }],
       });
     } else save();
   };
@@ -138,23 +141,21 @@ export default function BodyAnalysis() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 80 }} keyboardShouldPersistTaps="handled">
-        <SectionHeader title="Sen" />
+        <SectionHeader title={_('body.you')} />
         <Card style={{ gap: Spacing.md }}>
           <View style={styles.row}>
-            <Chip label="Erkek" active={sex === 'male'} onPress={() => setSex('male')} />
-            <Chip label="Kadın" active={sex === 'female'} onPress={() => setSex('female')} />
+            <Chip label={_('body.male')} active={sex === 'male'} onPress={() => setSex('male')} />
+            <Chip label={_('body.female')} active={sex === 'female'} onPress={() => setSex('female')} />
           </View>
           <View style={styles.row}>
-            <Field label="Yaş" value={age} onChange={setAge} unit="yıl" />
-            <Field label="Boy" value={height} onChange={setHeight} unit="cm" />
-            <Field label="Kilo" value={weight} onChange={setWeight} unit="kg" decimal />
+            <Field label={_('body.age')} value={age} onChange={setAge} unit={_('body.yrs')} />
+            <Field label={_('body.height')} value={height} onChange={setHeight} unit={_('body.cm')} />
+            <Field label={_('body.weight')} value={weight} onChange={setWeight} unit={_('common.kg')} decimal />
           </View>
-          <T variant="caption" muted>
-            Kilo, kilo takibindeki son ölçümünden gelir. Değiştirirsen yeni ölçüm olarak kaydedilir.
-          </T>
+          <T variant="caption" muted>{_('body.weight_comes_from_your_latest')}</T>
         </Card>
 
-        <SectionHeader title="Aktivite seviyesi" />
+        <SectionHeader title={_('body.activity_level')} />
         <View style={{ gap: Spacing.sm }}>
           {ACTIVITY.map((a) => {
             const active = activity === a.key;
@@ -179,74 +180,64 @@ export default function BodyAnalysis() {
           })}
         </View>
 
-        <SectionHeader title="Çevre ölçüleri (isteğe bağlı)" />
+        <SectionHeader title={_('body.circumferences_optional')} />
         <Card style={{ gap: Spacing.md }}>
           <View style={styles.row}>
-            <Field label="Bel" value={waist} onChange={setWaist} unit="cm" decimal />
-            <Field label="Boyun" value={neck} onChange={setNeck} unit="cm" decimal />
-            {sex === 'female' && <Field label="Kalça" value={hip} onChange={setHip} unit="cm" decimal />}
+            <Field label={_('body.waist')} value={waist} onChange={setWaist} unit={_('body.cm')} decimal />
+            <Field label={_('body.neck')} value={neck} onChange={setNeck} unit={_('body.cm')} decimal />
+            {sex === 'female' && <Field label={_('common.hips')} value={hip} onChange={setHip} unit={_('body.cm')} decimal />}
           </View>
-          <T variant="caption" muted>
-            Bel (göbek hizası) ve boyun ölçüsü girersen yağ oranı US Navy formülüyle, girmezsen BMI tabanlı tahminle hesaplanır.{' '}
-            {sex === 'female' ? 'Kadınlarda kalça da gerekir.' : ''}
+          <T variant="caption" muted>{_('body.if_you_enter_waist_at', { v: sex === 'female' ? _('body.women_also_need_hips') : '' })}
           </T>
         </Card>
 
-        <SectionHeader title="Hedef" />
+        <SectionHeader title={_('common.target')} />
         <Card style={{ gap: Spacing.md }}>
           <View style={styles.row}>
-            <Field label="Hedef kilo" value={targetWeight} onChange={setTargetWeight} unit="kg" decimal />
-            <Field label="Hedef yağ" value={targetBf} onChange={setTargetBf} unit="%" decimal />
+            <Field label={_('body.target_weight')} value={targetWeight} onChange={setTargetWeight} unit={_('common.kg')} decimal />
+            <Field label={_('body.target_body_fat')} value={targetBf} onChange={setTargetBf} unit="%" decimal />
           </View>
-          <T variant="label" secondary>
-            Haftalık hız (kg/hafta)
-          </T>
+          <T variant="label" secondary>{_('body.weekly_rate_kg_week')}</T>
           <View style={[styles.row, { flexWrap: 'wrap' }]}>
             {RATES.map((r) => (
-              <Chip key={r} label={r === 0 ? 'Koru' : signed(r)} active={rate === r} onPress={() => setRate(r)} />
+              <Chip key={r} label={r === 0 ? _('body.maintain') : signed(r)} active={rate === r} onPress={() => setRate(r)} />
             ))}
           </View>
-          <T variant="caption" muted>
-            Hedef kilo ve yağ oranından biri yeterli; ikisi de girilirse hedef kilo kullanılır.
-          </T>
+          <T variant="caption" muted>{_('body.either_target_weight_or_body')}</T>
         </Card>
 
         {calc && (
           <>
-            <SectionHeader title="Sonuçlar (tahmini)" />
+            <SectionHeader title={_('body.results_estimated')} />
             <Card style={{ gap: Spacing.md }}>
               <View style={styles.row}>
-                <Result label="BMI" value={calc.bmi.toFixed(1).replace('.', ',')} sub={bmiCategory(calc.bmi)} />
-                <Result label="Yağ oranı" value={`%${fmt(calc.bf.percent)}`} sub={bodyFatCategory(sex, calc.bf.percent)} />
-                <Result label="Yağsız kütle" value={`${fmt(Math.round(calc.lean * 10) / 10)} kg`} sub="tahmini" />
+                <Result label={_('body.bmi')} value={calc.bmi.toFixed(1).replace('.', decimalSep())} sub={bmiCategory(calc.bmi)} />
+                <Result label={_('body.body_fat')} value={`%${fmt(calc.bf.percent)}`} sub={bodyFatCategory(sex, calc.bf.percent)} />
+                <Result label={_('body.lean_mass')} value={_('common.kg2', { v: fmt(Math.round(calc.lean * 10) / 10) })} sub="tahmini" />
               </View>
-              <Badge label={`Yöntem: ${calc.bf.methodLabel}`} tint={t.textSecondary} bg={t.surfacePressed} icon="info" />
+              <Badge label={_('body.method', { methodLabel: calc.bf.methodLabel })} tint={t.textSecondary} bg={t.surfacePressed} icon="info" />
               {needNeckWaist && (
-                <T variant="caption" muted>
-                  Bu yalnızca bir tahmin; kas kütlesi yüksekse yağ oranı olduğundan yüksek çıkar. Daha iyi sonuç için bel ve boyun ölçüsü ekle.
-                </T>
+                <T variant="caption" muted>{_('body.this_is_only_an_estimate')}</T>
               )}
               <Divider />
               <View style={styles.row}>
-                <Result label="BMR" value={`${calc.bmr}`} sub="kcal, dinlenirken" />
-                <Result label="TDEE" value={`${calc.target.tdee}`} sub="kcal, günlük harcama" />
+                <Result label={_('body.bmr')} value={`${calc.bmr}`} sub={_('body.kcal_resting')} />
+                <Result label={_('body.tdee')} value={`${calc.target.tdee}`} sub={_('body.kcal_daily')} />
               </View>
             </Card>
 
-            <SectionHeader title="Günlük hedefin" />
+            <SectionHeader title={_('body.your_daily_target')} />
             <Card style={{ gap: Spacing.md }}>
               <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
                 <T variant="numLarge">{calc.macros.kcal}</T>
-                <T secondary>kcal / gün</T>
+                <T secondary>{_('body.kcal_day')}</T>
               </View>
               <T variant="label" secondary>
-                {calc.target.adjustment === 0 ? 'Kilonu korumak için harcamana eşit.' : `Harcamana göre ${signed(calc.target.adjustment)} kcal`}
-                {calc.target.weeklyRateKg !== 0 ? ` · yaklaşık ${signed(calc.target.weeklyRateKg)} kg/hafta` : ''}
+                {calc.target.adjustment === 0 ? _('body.equal_to_your_expenditure_to') : _('body.kcal_vs_your_expenditure', { v: signed(calc.target.adjustment) })}
+                {calc.target.weeklyRateKg !== 0 ? _('body.about_kg_week', { v: signed(calc.target.weeklyRateKg) }) : ''}
               </T>
               {calc.target.deficitBlocked && (
-                <T variant="label" color={t.gold}>
-                  Alt sınır nedeniyle açık oluşturulamıyor.
-                </T>
+                <T variant="label" color={t.gold}>{_('body.a_deficit_can_t_be')}</T>
               )}
               {calc.target.clampedReason && (
                 <View style={[styles.note, { backgroundColor: t.goldSoft }]}>
@@ -257,23 +248,21 @@ export default function BodyAnalysis() {
               )}
               <Divider />
               <View style={styles.row}>
-                <Result label="Protein" value={`${calc.macros.protein} g`} sub={`${fmt(Math.round((calc.macros.protein / v.w!) * 10) / 10)} g/kg`} />
-                <Result label="Karb." value={`${calc.macros.carbs} g`} />
-                <Result label="Yağ" value={`${calc.macros.fat} g`} sub={`%${Math.round(((calc.macros.fat * 9) / calc.macros.kcal) * 100)}`} />
+                <Result label={_('common.protein')} value={_('body.g', { protein: calc.macros.protein })} sub={_('body.g_kg', { v: fmt(Math.round((calc.macros.protein / v.w!) * 10) / 10) })} />
+                <Result label={_('common.carbs')} value={_('body.g2', { carbs: calc.macros.carbs })} />
+                <Result label={_('common.fat')} value={_('body.g3', { fat: calc.macros.fat })} sub={`%${Math.round(((calc.macros.fat * 9) / calc.macros.kcal) * 100)}`} />
               </View>
               <Divider />
-              <T variant="label">
-                Antrenman günü: {calc.training.kcal} kcal ({calc.training.carbs} g karbonhidrat)
-              </T>
+              <T variant="label">{_('body.training_day_kcal_g_carbs', { kcal: calc.training.kcal, carbs: calc.training.carbs })}</T>
               {calc.eta && (
                 <>
                   <Divider />
                   <T variant="label">
                     {calc.eta.direction === 'hold'
-                      ? `Hedef kilon (${fmt(calc.eta.targetWeightKg)} kg) zaten şu anki kilon.`
+                      ? _('body.your_target_weight_kg_is', { v: fmt(calc.eta.targetWeightKg) })
                       : calc.eta.weeks != null
-                        ? `Hedef ${fmt(calc.eta.targetWeightKg)} kg · tahmini süre ${calc.eta.weeks} hafta (~${Math.round(calc.eta.weeks / 4.345)} ay)`
-                        : `Hedef ${fmt(calc.eta.targetWeightKg)} kg`}
+                        ? _('body.target_kg_estimated_weeks_mo', { v: fmt(calc.eta.targetWeightKg), count: calc.eta.weeks, v2: Math.round(calc.eta.weeks / 4.345) })
+                        : _('body.target_kg', { v: fmt(calc.eta.targetWeightKg) })}
                   </T>
                   {calc.eta.note && (
                     <T variant="caption" muted>
@@ -282,18 +271,14 @@ export default function BodyAnalysis() {
                   )}
                 </>
               )}
-              <T variant="caption" muted>
-                Tüm değerler tahmindir; kilo trendine göre zamanla ayarla. Tıbbi bir durumun varsa beslenme planını doktorunla birlikte yap.
-              </T>
+              <T variant="caption" muted>{_('body.all_values_are_estimates_adjust')}</T>
             </Card>
           </>
         )}
 
-        <Button title="Kaydet" icon="check" onPress={askSave} disabled={!valid} style={{ marginTop: Spacing.xl }} />
+        <Button title={_('common.save')} icon="check" onPress={askSave} disabled={!valid} style={{ marginTop: Spacing.xl }} />
         {!valid && (
-          <T variant="caption" muted style={{ textAlign: 'center', marginTop: Spacing.sm }}>
-            Yaş (14-100), boy (120-230 cm) ve kilo (30-300 kg) gerekli.
-          </T>
+          <T variant="caption" muted style={{ textAlign: 'center', marginTop: Spacing.sm }}>{_('body.age_14_100_height_120')}</T>
         )}
       </ScrollView>
     </KeyboardAvoidingView>

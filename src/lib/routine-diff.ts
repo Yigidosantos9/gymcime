@@ -1,3 +1,5 @@
+import { t } from '@/i18n';
+
 /** Rutin yapısı: egzersiz sırası, çalışma seti sayısı, tekrar aralığı. */
 export type ShapeItem = { exercise_id: number; name: string; target_sets: number; rep_min: number; rep_max: number };
 
@@ -33,11 +35,11 @@ export function diffRoutine(routine: ShapeItem[], workout: ShapeItem[]): Routine
   const wOrder = workout.filter((w) => rById.has(w.exercise_id)).map((w) => w.exercise_id);
   const reordered = rOrder.some((id, i) => id !== wOrder[i]);
   const lines = [
-    ...added.map((n) => `+ ${n} eklendi`),
-    ...removed.map((n) => `− ${n} çıkarıldı`),
-    ...sets.map((s) => `${s.name}: ${s.from} → ${s.to} set`),
-    ...reps.map((s) => `${s.name}: ${s.from} → ${s.to} tekrar`),
-    ...(reordered ? ['Egzersiz sırası değişti'] : []),
+    ...added.map((n) => t('diff.added', { name: n })),
+    ...removed.map((n) => t('diff.removed', { name: n })),
+    ...sets.map((s) => t('diff.sets', { name: s.name, from: s.from, to: s.to })),
+    ...reps.map((s) => t('diff.reps', { name: s.name, from: s.from, to: s.to })),
+    ...(reordered ? [t('diff.reordered')] : []),
   ];
   return { changed: lines.length > 0, added, removed, sets, reps, reordered, lines };
 }

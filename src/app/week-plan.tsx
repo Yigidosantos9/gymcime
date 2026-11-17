@@ -24,9 +24,12 @@ import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
 import { haptic } from '@/lib/haptics';
 import { syncReminders } from '@/lib/reminder-io';
-import { muscleFrequency, recoveryConflicts, templateAssignments, WEEK_TEMPLATES, WEEKDAY_NAMES, WEEKDAY_SHORT, weekdayOf, type WeekTemplate } from '@/lib/week-plan';
+import { muscleFrequency, recoveryConflicts, templateAssignments, WEEK_TEMPLATES, weekdayNames, weekdayShort, weekdayOf, type WeekTemplate } from '@/lib/week-plan';
+import { useT } from '@/components/language-provider';
+import { muscleLabel, routineLabel } from '@/i18n/labels';
 
 export default function WeekPlan() {
+  const _ = useT();
   const t = useTheme();
   const sheet = useSheet();
   const [now] = useState(() => Date.now());
@@ -50,14 +53,12 @@ export default function WeekPlan() {
 
   const pickRoutine = (d: WeekPlanDay) =>
     sheet.custom({
-      title: `${WEEKDAY_NAMES[d.weekday]} · rutin seç`,
+      title: _('weekPlan.pick_routine', { v: weekdayNames()[d.weekday] }),
       render: (close) => (
         <View style={{ gap: Spacing.sm }}>
           <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: Spacing.sm }}>
             {routines.length === 0 && (
-              <T secondary style={{ textAlign: 'center', paddingVertical: Spacing.sm }}>
-                Henüz rutin yok. Aşağıdan oluştur ya da bir şablon uygula.
-              </T>
+              <T secondary style={{ textAlign: 'center', paddingVertical: Spacing.sm }}>{_('weekPlan.no_routines_yet_create_one')}</T>
             )}
             {routines.map((r: RoutineSummary) => {
               const on = d.routine_id === r.id;
@@ -74,10 +75,10 @@ export default function WeekPlan() {
                   <Icon name="barbell" size={16} color={t.primary} />
                   <View style={{ flex: 1 }}>
                     <T variant="heading" numberOfLines={1}>
-                      {r.name}
+                      {routineLabel(r.name)}
                     </T>
                     <T variant="caption" secondary numberOfLines={1}>
-                      {r.exercise_count} egzersiz{r.muscles ? ` · ${r.muscles.split(',').slice(0, 3).join(', ')}` : ''}
+                      {_('weekPlan.exercises', { count: r.exercise_count, v: r.muscles ? ` · ${r.muscles.split(',').slice(0, 3).join(', ')}` : '' })}
                     </T>
                   </View>
                   {on && <Icon name="check" size={16} color={t.primary} />}
@@ -93,7 +94,7 @@ export default function WeekPlan() {
             }}
             style={[styles.pickRow, { backgroundColor: t.surfacePressed, justifyContent: 'center' }]}>
             <Icon name="moon" size={16} color={t.text} />
-            <T variant="heading">Dinlenme günü</T>
+            <T variant="heading">{_('weekPlan.rest_day')}</T>
           </PressableScale>
           <PressableScale
             onPress={async () => {
@@ -102,9 +103,7 @@ export default function WeekPlan() {
             }}
             style={[styles.pickRow, { backgroundColor: t.primarySoft, justifyContent: 'center' }]}>
             <Icon name="add" size={16} color={t.primary} />
-            <T variant="heading" color={t.primary}>
-              Yeni rutin oluştur
-            </T>
+            <T variant="heading" color={t.primary}>{_('common.create_a_new_routine')}</T>
           </PressableScale>
         </View>
       ),
@@ -112,10 +111,10 @@ export default function WeekPlan() {
 
   const editNote = (d: WeekPlanDay) =>
     askRoutineName(sheet, {
-      title: `${WEEKDAY_NAMES[d.weekday]} notu`,
+      title: _('weekPlan.note', { v: weekdayNames()[d.weekday] }),
       initial: d.note ?? '',
-      placeholder: 'Örn. Sabah, 45 dk',
-      hint: 'Kısa bir not; boş bırakıp kaydedersen silinir.',
+      placeholder: _('weekPlan.e_g_morning_45_min'),
+      hint: _('weekPlan.a_short_note_saving_it'),
       allowEmpty: true,
       onSubmit: async (text) => {
         await setWeekPlanNote(db, d.weekday, text);
@@ -125,11 +124,11 @@ export default function WeekPlan() {
 
   const applyTemplate = (tpl: WeekTemplate) =>
     sheet.actions({
-      title: `${tpl.label} uygulansın mı?`,
-      message: `${tpl.hint}. Mevcut gün atamaların değişir; şablon rutinleri yoksa oluşturulur (varsa aynı adlı rutin kullanılır). Gün notların korunur.`,
+      title: _('weekPlan.apply', { label: tpl.label }),
+      message: _('weekPlan.your_current_day_assignments', { hint: tpl.hint }),
       actions: [
         {
-          label: 'Şablonu uygula',
+          label: _('weekPlan.apply_template'),
           icon: 'check',
           style: 'primary',
           onPress: async () => {
@@ -144,11 +143,11 @@ export default function WeekPlan() {
 
   const clearAll = () =>
     sheet.actions({
-      title: 'Plan temizlensin mi?',
-      message: 'Tüm günler dinlenme günü olur. Rutinlerin silinmez.',
+      title: _('weekPlan.clear_the_plan'),
+      message: _('weekPlan.all_days_become_rest_days'),
       actions: [
         {
-          label: 'Planı temizle',
+          label: _('weekPlan.clear_plan'),
           icon: 'trash',
           style: 'destructive',
           onPress: async () => {
@@ -165,14 +164,12 @@ export default function WeekPlan() {
         <Card style={{ gap: Spacing.sm }}>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6 }}>
             <T variant="num">{trainingDays}</T>
-            <T variant="label" secondary>
-              antrenman günü · {7 - trainingDays} dinlenme
-            </T>
+            <T variant="label" secondary>{_('weekPlan.training_days_rest', { v: 7 - trainingDays })}</T>
           </View>
           {freq.length > 0 && (
             <View style={styles.wrap}>
               {freq.map((f) => (
-                <Badge key={f.muscle} label={`${f.muscle} ${f.days}×`} tint={f.days > 3 ? t.gold : t.primary} bg={f.days > 3 ? t.goldSoft : t.primarySoft} />
+                <Badge key={f.muscle} label={`${muscleLabel(f.muscle)} ${f.days}×`} tint={f.days > 3 ? t.gold : t.primary} bg={f.days > 3 ? t.goldSoft : t.primarySoft} />
               ))}
             </View>
           )}
@@ -182,37 +179,34 @@ export default function WeekPlan() {
                 <View key={i} style={[styles.warn, { backgroundColor: t.goldSoft }]}>
                   <Icon name="warning" size={13} color={t.gold} />
                   <T variant="caption" color={t.gold} style={{ flex: 1, fontFamily: Font.bold }}>
-                    {c.muscle}: {WEEKDAY_SHORT[c.days[0]]} ve {WEEKDAY_SHORT[c.days[1]]} {c.gap === 1 ? 'art arda' : `arası ${c.gap} gün`} (önerilen dinlenme {recoveryDays} gün)
-                  </T>
+                    {_('weekPlan.and_recommended_rest_days', { muscle: muscleLabel(c.muscle), v: weekdayShort()[c.days[0]], v2: weekdayShort()[c.days[1]], v3: c.gap === 1 ? _('weekPlan.back_to_back') : _('weekPlan.days_apart', { count: c.gap }), recoveryDays: recoveryDays })}</T>
                 </View>
               ))}
             </View>
           ) : (
             trainingDays > 0 && (
-              <T variant="caption" color={t.success}>
-                Toparlanma çakışması yok.
-              </T>
+              <T variant="caption" color={t.success}>{_('weekPlan.no_recovery_conflicts')}</T>
             )
           )}
         </Card>
       </Animated.View>
 
-      <SectionHeader title="Günler" />
+      <SectionHeader title={_('weekPlan.days')} />
       {plan.map((d, i) => (
         <Animated.View key={d.weekday} entering={FadeInDown.delay(i * 35).duration(300)}>
-          <PressableScale onPress={() => pickRoutine(d)} scaleTo={0.985} accessibilityLabel={`${WEEKDAY_NAMES[d.weekday]}, ${d.routine_name ?? 'dinlenme günü'}. Rutin seç`}>
+          <PressableScale onPress={() => pickRoutine(d)} scaleTo={0.985} accessibilityLabel={_('weekPlan.pick_a_routine', { v: weekdayNames()[d.weekday], v2: d.routine_name ?? _('weekPlan.rest_day2') })}>
             <Card style={[styles.dayCard, d.weekday === today && { borderColor: t.primary, borderWidth: 1.5 }]}>
               <View style={[styles.dayBadge, { backgroundColor: d.routine_id ? t.primarySoft : t.surfaceRaised }]}>
                 <T variant="heading" color={d.routine_id ? t.primary : t.textMuted} style={{ fontSize: 14 }}>
-                  {WEEKDAY_SHORT[d.weekday]}
+                  {weekdayShort()[d.weekday]}
                 </T>
               </View>
               <View style={{ flex: 1, gap: 2 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <T variant="heading" color={d.routine_id ? t.text : t.textMuted} numberOfLines={1} style={{ flexShrink: 1 }}>
-                    {d.routine_name ?? 'Dinlenme günü'}
+                    {d.routine_name ? routineLabel(d.routine_name) : _('weekPlan.rest_day')}
                   </T>
-                  {d.weekday === today && <Badge label="Bugün" tint={t.primary} bg={t.primarySoft} />}
+                  {d.weekday === today && <Badge label={_('common.today')} tint={t.primary} bg={t.primarySoft} />}
                 </View>
                 {d.routine_id != null && d.muscles.length > 0 && (
                   <T variant="caption" secondary numberOfLines={1}>
@@ -225,13 +219,13 @@ export default function WeekPlan() {
                   </T>
                 )}
               </View>
-              <IconButton icon="edit" label={`${WEEKDAY_NAMES[d.weekday]} notunu düzenle`} onPress={() => editNote(d)} bg="transparent" color={t.textSecondary} size={14} />
+              <IconButton icon="edit" label={_('weekPlan.edit_note', { v: weekdayNames()[d.weekday] })} onPress={() => editNote(d)} bg="transparent" color={t.textSecondary} size={14} />
             </Card>
           </PressableScale>
         </Animated.View>
       ))}
 
-      <SectionHeader title="Hızlı şablonlar" />
+      <SectionHeader title={_('weekPlan.quick_templates')} />
       <View style={{ gap: Spacing.sm }}>
         {WEEK_TEMPLATES.map((tpl) => (
           <PressableScale key={tpl.key} onPress={() => applyTemplate(tpl)} scaleTo={0.98}>
@@ -248,7 +242,7 @@ export default function WeekPlan() {
         ))}
       </View>
 
-      <Button title="Planı temizle" kind="ghost" icon="trash" onPress={clearAll} disabled={trainingDays === 0 && plan.every((d) => !d.note)} style={{ marginTop: Spacing.xl }} />
+      <Button title={_('weekPlan.clear_plan')} kind="ghost" icon="trash" onPress={clearAll} disabled={trainingDays === 0 && plan.every((d) => !d.note)} style={{ marginTop: Spacing.xl }} />
     </ScrollView>
   );
 }

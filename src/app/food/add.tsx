@@ -13,18 +13,22 @@ import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
 import { estimateMeal, hasApiKey, type MealEstimate } from '@/lib/ai';
 import { AiError } from '@/lib/ai-core';
-import { parseNumber } from '@/lib/format';
+import { parseAmount } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { leave } from '@/lib/nav';
 import { dayKey, defaultMeal, MEALS, type Meal } from '@/lib/nutrition';
-import { nutritionForGrams, portionGrams, searchFoods, servingText } from '@/lib/food-search';
+import { displayFoodName, displayServing, foodName, nutritionForGrams, portionGrams, portionLabel, searchFoods, servingText } from '@/lib/food-search';
 import { pickMealPhoto, type MealPhoto } from '@/lib/photo';
+import { useT } from '@/components/language-provider';
+import { mealLabel } from '@/i18n/labels';
+import { decimalSep } from '@/i18n';
 
 type Row = { name: string; kcal: string; protein: string; carbs: string; fat: string; portion: string };
 
-const num = (s: string) => parseNumber(s) ?? 0;
+const num = (s: string) => parseAmount(s) ?? 0;
 
 export default function AddFood() {
+  const _ = useT();
   const t = useTheme();
   const db = useSQLiteContext();
   const params = useLocalSearchParams<{ meal?: string; day?: string }>();
@@ -54,7 +58,7 @@ export default function AddFood() {
       busy.current = false;
       setSaving(false);
       haptic.warning();
-      setError(`Kaydedilemedi: ${e instanceof Error && e.message ? e.message : 'bilinmeyen hata'}. Tekrar dene.`);
+      setError(_('foodAdd.save_failed', { v: e instanceof Error && e.message ? e.message : _('common.unknown_error') }));
     }
   };
 
@@ -82,55 +86,54 @@ export default function AddFood() {
         )}
         <View style={styles.wrap}>
           {MEALS.map((m) => (
-            <Chip key={m} label={m} active={meal === m} onPress={() => setMeal(m)} />
+            <Chip key={m} label={mealLabel(m)} active={meal === m} onPress={() => setMeal(m)} />
           ))}
         </View>
 
-        <SectionHeader title="Yiyecek ara" />
+        <SectionHeader title={_('foodAdd.search_food')} />
         <FoodSearch
           saving={saving}
           onAdd={(f, serving, n) => guarded(() => addFoodLog(db, { day, meal, name: f.name, kcal: n.kcal, protein: n.protein, carbs: n.carbs, fat: n.fat, serving, source: 'manual' }).then(() => {}))}
         />
 
-        <SectionHeader title="Hızlı ekle" />
+        <SectionHeader title={_('foodAdd.quick_add')} />
         <Card style={{ gap: Spacing.md }}>
           <TextInput
             value={form.name}
             onChangeText={set('name')}
-            placeholder="Yiyecek adı"
+            placeholder={_('foodAdd.food_name')}
             placeholderTextColor={t.textMuted}
             style={[styles.input, { backgroundColor: t.surfaceRaised, color: t.text }]}
           />
           <View style={styles.wrap}>
-            <Num label="Kalori" unit="kcal" value={form.kcal} onChange={set('kcal')} />
-            <Num label="Protein" unit="g" value={form.protein} onChange={set('protein')} />
-            <Num label="Karb." unit="g" value={form.carbs} onChange={set('carbs')} />
-            <Num label="Yağ" unit="g" value={form.fat} onChange={set('fat')} />
+            <Num label={_('foodAdd.calories')} unit={_('common.kcal')} value={form.kcal} onChange={set('kcal')} />
+            <Num label={_('common.protein')} unit="g" value={form.protein} onChange={set('protein')} />
+            <Num label={_('common.carbs')} unit="g" value={form.carbs} onChange={set('carbs')} />
+            <Num label={_('common.fat')} unit="g" value={form.fat} onChange={set('fat')} />
           </View>
           <TextInput
             value={form.portion}
             onChangeText={set('portion')}
-            placeholder="Porsiyon (ör. 1 kase, 150 g)"
+            placeholder={_('foodAdd.serving_e_g_1_bowl')}
             placeholderTextColor={t.textMuted}
             style={[styles.input, { backgroundColor: t.surfaceRaised, color: t.text }]}
           />
-          <Button title="Ekle" icon="add" onPress={submit} disabled={!canAdd || saving} loading={saving} />
+          <Button title={_('foodAdd.add')} icon="add" onPress={submit} disabled={!canAdd || saving} loading={saving} />
         </Card>
 
         {data && (data.fav.length > 0 || data.recent.length > 0) && (
           <>
-            <SectionHeader title="Sık yenenler" />
+            <SectionHeader title={_('foodAdd.frequent_foods')} />
             <Card padded={false}>
               {[...data.fav, ...data.recent].map((f, i, all) => (
                 <View key={f.id}>
                   <View style={styles.foodRow}>
                     <PressableScale onPress={() => quick(f)} disabled={saving} style={{ flex: 1 }} scaleTo={0.99}>
                       <T variant="label" numberOfLines={1}>
-                        {f.name}
+                        {displayFoodName(f.name)}
                       </T>
                       <T variant="caption" secondary numberOfLines={1}>
-                        {Math.round(f.kcal)} kcal · P {Math.round(f.protein)} K {Math.round(f.carbs)} Y {Math.round(f.fat)}
-                        {f.serving ? ` · ${f.serving}` : ''}
+                        {_('foodAdd.kcal_p_c_f', { v: Math.round(f.kcal), v2: Math.round(f.protein), v3: Math.round(f.carbs), v4: Math.round(f.fat), v5: f.serving ? ` · ${displayServing(f.serving)}` : '' })}
                       </T>
                     </PressableScale>
                     <PressableScale onPress={() => fav(f)} hitSlop={10} hapticOnPress={false}>
@@ -141,13 +144,11 @@ export default function AddFood() {
                 </View>
               ))}
             </Card>
-            <T variant="caption" muted style={{ marginTop: 6 }}>
-              Dokununca seçili öğüne eklenir.
-            </T>
+            <T variant="caption" muted style={{ marginTop: 6 }}>{_('foodAdd.tap_to_add_to_the')}</T>
           </>
         )}
 
-        <SectionHeader title="Fotoğraftan tahmin (AI)" />
+        <SectionHeader title={_('foodAdd.estimate_from_photo_ai')} />
         <PhotoEstimate
           hasKey={data?.key ?? false}
           saving={saving}
@@ -165,10 +166,11 @@ export default function AddFood() {
   );
 }
 
-const fmt1 = (n: number) => String(Math.round(n * 10) / 10).replace('.', ',');
+const fmt1 = (n: number) => String(Math.round(n * 10) / 10).replace('.', decimalSep());
 
 /** Türkçe yemek veritabanında arama + porsiyon seçici. Veritabanında yoksa aşağıdaki hızlı ekle / AI akışı kullanılır. */
 function FoodSearch({ saving, onAdd }: { saving: boolean; onAdd: (f: FoodTr, serving: string, n: { kcal: number; protein: number; carbs: number; fat: number }) => Promise<void> | undefined }) {
+  const _ = useT();
   const t = useTheme();
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState<FoodCategoryId | null>(null);
@@ -196,61 +198,53 @@ function FoodSearch({ saving, onAdd }: { saving: boolean; onAdd: (f: FoodTr, ser
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
           <View style={{ flex: 1 }}>
             <T variant="heading" numberOfLines={2}>
-              {picked.name}
+              {foodName(picked)}
             </T>
-            <T variant="caption" secondary>
-              100 {picked.unit} · {Math.round(picked.kcal)} kcal · P {fmt1(picked.protein)} K {fmt1(picked.carbs)} Y {fmt1(picked.fat)}
+            <T variant="caption" secondary>{_('foodAdd.100_kcal_p_c_f', { unit: picked.unit, v: Math.round(picked.kcal), v2: fmt1(picked.protein), v3: fmt1(picked.carbs), v4: fmt1(picked.fat) })}
             </T>
           </View>
-          <IconButton icon="close" label="Seçimi kapat" onPress={() => setPicked(null)} />
+          <IconButton icon="close" label={_('foodAdd.close_selection')} onPress={() => setPicked(null)} />
         </View>
         <View style={styles.wrap}>
           {picked.portions.map((p, i) => (
-            <Chip key={p.label} label={p.label} active={portionIdx === i} onPress={() => setPortionIdx(i)} />
+            <Chip key={p.label} label={portionLabel(p.label)} active={portionIdx === i} onPress={() => setPortionIdx(i)} />
           ))}
-          <Chip label={`Serbest ${picked.unit}`} active={portionIdx === -1} onPress={() => setPortionIdx(-1)} />
+          <Chip label={_('foodAdd.free', { unit: picked.unit })} active={portionIdx === -1} onPress={() => setPortionIdx(-1)} />
         </View>
         {portion ? (
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.lg }}>
-            <IconButton icon="minus" label="Miktarı azalt" onPress={() => setQty((q) => Math.max(0.5, q - 0.5))} />
+            <IconButton icon="minus" label={_('foodAdd.decrease_amount')} onPress={() => setQty((q) => Math.max(0.5, q - 0.5))} />
             <View style={{ minWidth: 90, alignItems: 'center' }}>
               <T variant="heading" style={{ fontSize: 22 }}>
                 {fmt1(qty)}
               </T>
-              <T variant="caption" muted>
-                porsiyon · {Math.round(grams)} {picked.unit}
+              <T variant="caption" muted>{_('foodAdd.serving', { v: Math.round(grams), unit: picked.unit })}
               </T>
             </View>
-            <IconButton icon="add" label="Miktarı artır" onPress={() => setQty((q) => Math.min(50, q + 0.5))} />
+            <IconButton icon="add" label={_('foodAdd.increase_amount')} onPress={() => setQty((q) => Math.min(50, q + 0.5))} />
           </View>
         ) : (
           <View style={{ gap: 3 }}>
-            <T variant="caption" secondary>
-              Miktar ({picked.unit})
-            </T>
+            <T variant="caption" secondary>{_('foodAdd.amount', { unit: picked.unit })}</T>
             <TextInput
               value={gramText}
               onChangeText={setGramText}
               keyboardType="decimal-pad"
               placeholder="100"
               placeholderTextColor={t.textMuted}
-              accessibilityLabel={`Miktar, ${picked.unit}`}
+              accessibilityLabel={_('foodAdd.amount2', { unit: picked.unit })}
               style={[styles.input, { height: 42, backgroundColor: t.surfaceRaised, color: t.text }]}
             />
           </View>
         )}
         <View style={[styles.preview2, { backgroundColor: t.surfaceRaised }]}>
           <T variant="numLarge" style={{ fontSize: 30, lineHeight: 36 }}>
-            {n.kcal} <T variant="label" secondary>kcal</T>
+            {n.kcal} <T variant="label" secondary>{_('common.kcal')}</T>
           </T>
-          <T variant="label" secondary>
-            P {fmt1(n.protein)} g · K {fmt1(n.carbs)} g · Y {fmt1(n.fat)} g
-          </T>
+          <T variant="label" secondary>{_('foodAdd.p_g_c_g_f', { v: fmt1(n.protein), v2: fmt1(n.carbs), v3: fmt1(n.fat) })}</T>
         </View>
-        <Button title="Öğüne ekle" icon="add" onPress={() => onAdd(picked, servingText(picked, portion, qty, grams), n)} disabled={saving || grams <= 0} loading={saving} />
-        <T variant="caption" muted>
-          Değerler yaklaşık değerdir; marka, pişirme ve tarife göre değişir.
-        </T>
+        <Button title={_('foodAdd.add_to_meal')} icon="add" onPress={() => onAdd(picked, servingText(picked, portion, qty, grams, 'tr'), n)} disabled={saving || grams <= 0} loading={saving} />
+        <T variant="caption" muted>{_('foodAdd.values_are_approximate_they_vary')}</T>
       </Card>
     );
   }
@@ -262,15 +256,15 @@ function FoodSearch({ saving, onAdd }: { saving: boolean; onAdd: (f: FoodTr, ser
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Ara: simit, köfte, çorba…"
+          placeholder={_('foodAdd.search_bagel_meatballs_soup')}
           placeholderTextColor={t.textMuted}
           autoCorrect={false}
           returnKeyType="search"
-          accessibilityLabel="Yiyecek ara"
+          accessibilityLabel={_('foodAdd.search_food')}
           style={{ flex: 1, color: t.text, fontSize: 15, fontFamily: Font.bold, height: 46 }}
         />
         {query.length > 0 && (
-          <PressableScale onPress={() => setQuery('')} hitSlop={10} accessibilityRole="button" accessibilityLabel="Aramayı temizle">
+          <PressableScale onPress={() => setQuery('')} hitSlop={10} accessibilityRole="button" accessibilityLabel={_('common.clear_search')}>
             <Icon name="close" size={14} color={t.textMuted} />
           </PressableScale>
         )}
@@ -281,24 +275,19 @@ function FoodSearch({ saving, onAdd }: { saving: boolean; onAdd: (f: FoodTr, ser
         ))}
       </ScrollView>
       {!searching ? (
-        <T variant="caption" muted>
-          350+ Türk yemeği, içecek ve ürün. Bulamazsan aşağıdan elle ekleyebilir ya da fotoğraf/not ile tahmin alabilirsin.
-        </T>
+        <T variant="caption" muted>{_('foodAdd.350_turkish_dishes_drinks_and')}</T>
       ) : results.length === 0 ? (
-        <T variant="label" secondary>
-          Sonuç yok. Aşağıdaki hızlı ekle ile elle girebilir ya da yapay zekâ tahmini isteyebilirsin.
-        </T>
+        <T variant="label" secondary>{_('foodAdd.no_results_enter_it_manually')}</T>
       ) : (
         <View>
           {results.map((f, i) => (
             <View key={f.id}>
-              <PressableScale onPress={() => pick(f)} scaleTo={0.99} style={styles.resultRow} accessibilityRole="button" accessibilityLabel={`${f.name}, seç`}>
+              <PressableScale onPress={() => pick(f)} scaleTo={0.99} style={styles.resultRow} accessibilityRole="button" accessibilityLabel={_('foodAdd.select', { name: foodName(f) })}>
                 <View style={{ flex: 1 }}>
                   <T variant="label" numberOfLines={1}>
-                    {f.name}
+                    {foodName(f)}
                   </T>
-                  <T variant="caption" secondary numberOfLines={1}>
-                    100 {f.unit}: {Math.round(f.kcal)} kcal · P {fmt1(f.protein)} K {fmt1(f.carbs)} Y {fmt1(f.fat)}
+                  <T variant="caption" secondary numberOfLines={1}>{_('foodAdd.100_kcal_p_c_f2', { unit: f.unit, v: Math.round(f.kcal), v2: fmt1(f.protein), v3: fmt1(f.carbs), v4: fmt1(f.fat) })}
                   </T>
                 </View>
                 <Icon name="chevronRight" size={12} color={t.textMuted} />
@@ -313,6 +302,7 @@ function FoodSearch({ saving, onAdd }: { saving: boolean; onAdd: (f: FoodTr, ser
 }
 
 function PhotoEstimate({ hasKey, saving, onSave }: { hasKey: boolean; saving: boolean; onSave: (rows: Row[]) => Promise<void> | undefined }) {
+  const _ = useT();
   const t = useTheme();
   const db = useSQLiteContext();
   const [photo, setPhoto] = useState<MealPhoto | null>(null);
@@ -329,11 +319,9 @@ function PhotoEstimate({ hasKey, saving, onSave }: { hasKey: boolean; saving: bo
           <View style={[styles.aiIcon, { backgroundColor: t.violetSoft }]}>
             <Icon name="camera" size={20} color={t.violet} />
           </View>
-          <T variant="label" secondary style={{ flex: 1 }}>
-            API anahtarı ekleyince yemeğin fotoğrafını çekip kalori ve makro tahmini alabilirsin. Tahmini sen düzenleyip kaydedersin.
-          </T>
+          <T variant="label" secondary style={{ flex: 1 }}>{_('foodAdd.once_you_add_an_api')}</T>
         </View>
-        <Button title="Anahtar ekle" icon="add" kind="secondary" onPress={() => router.push('/settings')} />
+        <Button title={_('foodAdd.add_key')} icon="add" kind="secondary" onPress={() => router.push('/settings')} />
       </Card>
     );
   }
@@ -348,7 +336,7 @@ function PhotoEstimate({ hasKey, saving, onSave }: { hasKey: boolean; saving: bo
         setRows([]);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Fotoğraf alınamadı.');
+      setError(e instanceof Error ? e.message : _('foodAdd.couldn_t_get_the_photo'));
     }
   };
 
@@ -360,7 +348,7 @@ function PhotoEstimate({ hasKey, saving, onSave }: { hasKey: boolean; saving: bo
       setEst(r);
       setRows(r.items.map((i) => ({ name: i.name, kcal: String(i.kcal), protein: String(i.protein), carbs: String(i.carbs), fat: String(i.fat), portion: i.portion })));
     } catch (e) {
-      setError(e instanceof AiError ? e.userMessage : 'Tahmin yapılamadı.');
+      setError(e instanceof AiError ? e.userMessage : _('foodAdd.couldn_t_make_an_estimate'));
     } finally {
       setBusy(false);
     }
@@ -373,21 +361,19 @@ function PhotoEstimate({ hasKey, saving, onSave }: { hasKey: boolean; saving: bo
   return (
     <Card style={{ gap: Spacing.md }}>
       <View style={styles.wrap}>
-        <Button title="Kamera" icon="camera" kind="secondary" small onPress={() => pick('camera')} />
-        <Button title="Galeri" icon="photo" kind="secondary" small onPress={() => pick('library')} />
+        <Button title={_('foodAdd.camera')} icon="camera" kind="secondary" small onPress={() => pick('camera')} />
+        <Button title={_('foodAdd.gallery')} icon="photo" kind="secondary" small onPress={() => pick('library')} />
       </View>
       {photo && <Image source={{ uri: photo.uri }} style={styles.preview} contentFit="cover" />}
       <TextInput
         value={note}
         onChangeText={setNote}
-        placeholder="Not (isteğe bağlı): ör. 2 yumurta, 1 dilim ekmek"
+        placeholder={_('foodAdd.note_optional_e_g_2')}
         placeholderTextColor={t.textMuted}
         style={[styles.input, { backgroundColor: t.surfaceRaised, color: t.text }]}
       />
-      <Button title="Tahmin et" icon="sparkles" onPress={run} loading={busy} disabled={!photo && !note.trim()} />
-      <T variant="caption" muted>
-        Fotoğraf 1024 px boyutuna küçültülür. Her tahmin küçük bir ücrete tabidir; sonuçları kaydetmeden önce düzenleyebilirsin.
-      </T>
+      <Button title={_('foodAdd.estimate')} icon="sparkles" onPress={run} loading={busy} disabled={!photo && !note.trim()} />
+      <T variant="caption" muted>{_('foodAdd.the_photo_is_resized_to')}</T>
       {error && (
         <T variant="label" color={t.danger}>
           {error}
@@ -396,7 +382,7 @@ function PhotoEstimate({ hasKey, saving, onSave }: { hasKey: boolean; saving: bo
       {est && (
         <>
           <Divider />
-          {rows.length === 0 && <T secondary>Yemek bulunamadı. {est.note}</T>}
+          {rows.length === 0 && <T secondary>{_('foodAdd.no_food_found', { note: est.note })}</T>}
           {rows.map((r, i) => {
             const conf = est.items[i]?.confidence;
             return (
@@ -413,13 +399,13 @@ function PhotoEstimate({ hasKey, saving, onSave }: { hasKey: boolean; saving: bo
                 </View>
                 <T variant="caption" secondary>
                   {r.portion}
-                  {conf ? ` · güven: ${conf === 'high' ? 'yüksek' : conf === 'medium' ? 'orta' : 'düşük'}` : ''}
+                  {conf ? _('foodAdd.confidence', { v: conf === 'high' ? _('foodAdd.high') : conf === 'medium' ? 'orta' : _('foodAdd.low') }) : ''}
                 </T>
                 <View style={styles.wrap}>
-                  <Num label="kcal" unit="" value={r.kcal} onChange={(v) => upd(i, 'kcal', v)} />
-                  <Num label="P" unit="g" value={r.protein} onChange={(v) => upd(i, 'protein', v)} />
-                  <Num label="K" unit="g" value={r.carbs} onChange={(v) => upd(i, 'carbs', v)} />
-                  <Num label="Y" unit="g" value={r.fat} onChange={(v) => upd(i, 'fat', v)} />
+                  <Num label={_('common.kcal')} unit="" value={r.kcal} onChange={(v) => upd(i, 'kcal', v)} />
+                  <Num label={_('foodAdd.p')} unit="g" value={r.protein} onChange={(v) => upd(i, 'protein', v)} />
+                  <Num label={_('foodAdd.c')} unit="g" value={r.carbs} onChange={(v) => upd(i, 'carbs', v)} />
+                  <Num label={_('foodAdd.f')} unit="g" value={r.fat} onChange={(v) => upd(i, 'fat', v)} />
                 </View>
               </View>
             );
@@ -429,7 +415,7 @@ function PhotoEstimate({ hasKey, saving, onSave }: { hasKey: boolean; saving: bo
               {est.note}
             </T>
           ) : null}
-          {rows.length > 0 && <Button title={`Hepsini kaydet · ${Math.round(total)} kcal`} icon="check" onPress={() => onSave(rows)} disabled={!valid || saving} loading={saving} />}
+          {rows.length > 0 && <Button title={_('foodAdd.save_all_kcal', { v: Math.round(total) })} icon="check" onPress={() => onSave(rows)} disabled={!valid || saving} loading={saving} />}
         </>
       )}
     </Card>

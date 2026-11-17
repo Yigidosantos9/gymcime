@@ -9,32 +9,35 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BodyMap } from '@/components/body-map';
 import { Icon, type IconName } from '@/components/icon';
-import { PressableScale, T } from '@/components/ui';
+import { Chip, PressableScale, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { createRoutinesFromTemplate, saveProfile } from '@/db/queries';
 import { useTheme } from '@/hooks/use-theme';
 import { dayWarning, notRecommended, WEEK_DAYS } from '@/lib/goals';
 import { haptic } from '@/lib/haptics';
-
-const GOALS: { label: string; icon: IconName; text: string }[] = [
-  { label: 'Kas kazanmak', icon: 'barbell', text: 'Hipertrofi odaklı, orta tekrar' },
-  { label: 'Güçlenmek', icon: 'bolt', text: 'Ağır kilolar, düşük tekrar' },
-  { label: 'Yağ yakmak', icon: 'flame', text: 'Kası koru, kondisyonu artır' },
-  { label: 'Formda kalmak', icon: 'heart', text: 'Dengeli ve sürdürülebilir' },
-];
-const LEVELS: { label: string; text: string }[] = [
-  { label: 'Yeni başlıyorum', text: '0–6 ay' },
-  { label: 'Orta', text: '6 ay – 2 yıl' },
-  { label: 'İleri', text: '2 yıldan fazla' },
-];
+import { useLanguage, useT } from '@/components/language-provider';
 
 export default function Onboarding() {
+  const _ = useT();
+  const { preference: langPref, setPreference: setLangPref, lang } = useLanguage();
+  // key = DB'de saklanan Türkçe değer; label gösterim
+  const GOALS: { key: string; label: string; icon: IconName; text: string }[] = [
+    { key: 'Kas kazanmak', label: _('onboarding.build_muscle'), icon: 'barbell', text: _('onboarding.hypertrophy_focused_moderate_reps') },
+    { key: 'Güçlenmek', label: _('common.get_stronger'), icon: 'bolt', text: _('onboarding.heavy_weights_low_reps') },
+    { key: 'Yağ yakmak', label: _('common.lose_fat'), icon: 'flame', text: _('onboarding.keep_muscle_boost_conditioning') },
+    { key: 'Formda kalmak', label: _('onboarding.stay_in_shape'), icon: 'heart', text: _('onboarding.balanced_and_sustainable') },
+  ];
+  const LEVELS: { key: string; label: string; text: string }[] = [
+    { key: 'Yeni başlıyorum', label: _('onboarding.i_m_just_starting'), text: _('onboarding.0_6_months') },
+    { key: 'Orta', label: _('onboarding.intermediate'), text: _('onboarding.6_months_2_years') },
+    { key: 'İleri', label: _('onboarding.advanced'), text: _('onboarding.over_2_years') },
+  ];
   const t = useTheme();
   const db = useSQLiteContext();
   const [step, setStep] = useState(0);
   const [name, setName] = useState('');
-  const [goal, setGoal] = useState(GOALS[0].label);
-  const [level, setLevel] = useState(LEVELS[1].label);
+  const [goal, setGoal] = useState('Kas kazanmak');
+  const [level, setLevel] = useState('Orta');
   const [days, setDays] = useState(4);
   const [saving, setSaving] = useState(false);
 
@@ -70,7 +73,7 @@ export default function Onboarding() {
     router.replace('/');
   };
 
-  const program = days <= 3 ? 'Full Body A/B' : days === 4 ? 'Üst / Alt Vücut' : 'Push / Pull / Legs';
+  const program = days <= 3 ? 'Full Body A/B' : days === 4 ? _('onboarding.upper_lower_body') : 'Push / Pull / Legs';
   const disabled = (step === 0 && !name.trim()) || saving;
 
   return (
@@ -90,19 +93,23 @@ export default function Onboarding() {
                 <View style={{ alignItems: 'center', marginBottom: Spacing.lg }}>
                   <BodyMap values={{ Göğüs: 1, Omuz: 0.75, Karın: 0.5, Bacak: 0.9, Sırt: 0.8, Kalça: 0.6, Biceps: 0.4, Triceps: 0.4 }} size={170} labels={false} />
                 </View>
-                <T variant="display">
-                  gymcime&apos;ye{'\n'}hoş geldin 🌊
-                </T>
-                <T secondary style={{ fontSize: 16, lineHeight: 23 }}>
-                  Antrenmanlarını kaydet, gelişimini gör, her seansta bir adım ileri git.
-                </T>
-                <T variant="overline" secondary style={{ marginTop: Spacing.lg }}>
-                  Sana nasıl seslenelim?
-                </T>
+                <View style={{ flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.lg }}>
+                  {(
+                    [
+                      { key: 'tr', label: _('settings.language_tr') },
+                      { key: 'en', label: _('settings.language_en') },
+                    ] as const
+                  ).map((l) => (
+                    <Chip key={l.key} label={l.label} active={langPref === l.key || (langPref === 'system' && l.key === lang)} onPress={() => setLangPref(l.key)} />
+                  ))}
+                </View>
+                <T variant="display">{_('onboarding.welcome_to_gymcime')}</T>
+                <T secondary style={{ fontSize: 16, lineHeight: 23 }}>{_('onboarding.log_your_workouts_see_your')}</T>
+                <T variant="overline" secondary style={{ marginTop: Spacing.lg }}>{_('onboarding.what_should_we_call_you')}</T>
                 <TextInput
                   value={name}
                   onChangeText={setName}
-                  placeholder="Adın"
+                  placeholder={_('common.your_name')}
                   placeholderTextColor={t.textMuted}
                   style={[styles.input, { backgroundColor: t.surface, borderColor: t.borderStrong, color: t.text }]}
                   returnKeyType="next"
@@ -113,10 +120,10 @@ export default function Onboarding() {
 
             {step === 1 && (
               <>
-                <T variant="title">Hedefin ne{name ? `, ${name.trim()}` : ''}?</T>
+                <T variant="title">{_('onboarding.what_s_your_goal', { v: name ? `, ${name.trim()}` : '' })}</T>
                 <View style={{ gap: Spacing.md, marginTop: Spacing.lg }}>
                   {GOALS.map((g) => (
-                    <Option key={g.label} active={goal === g.label} onPress={() => setGoal(g.label)} icon={g.icon} title={g.label} text={g.text} />
+                    <Option key={g.key} active={goal === g.key} onPress={() => setGoal(g.key)} icon={g.icon} title={g.label} text={g.text} />
                   ))}
                 </View>
               </>
@@ -124,10 +131,10 @@ export default function Onboarding() {
 
             {step === 2 && (
               <>
-                <T variant="title">Ne kadar süredir antrenman yapıyorsun?</T>
+                <T variant="title">{_('onboarding.how_long_have_you_been')}</T>
                 <View style={{ gap: Spacing.md, marginTop: Spacing.lg }}>
                   {LEVELS.map((l) => (
-                    <Option key={l.label} active={level === l.label} onPress={() => setLevel(l.label)} title={l.label} text={l.text} />
+                    <Option key={l.key} active={level === l.key} onPress={() => setLevel(l.key)} title={l.label} text={l.text} />
                   ))}
                 </View>
               </>
@@ -135,7 +142,7 @@ export default function Onboarding() {
 
             {step === 3 && (
               <>
-                <T variant="title">Haftada kaç gün gidebilirsin?</T>
+                <T variant="title">{_('onboarding.how_many_days_a_week')}</T>
                 <View style={styles.daysRow}>
                   {WEEK_DAYS.map((d) => (
                     <View key={d} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
@@ -154,7 +161,7 @@ export default function Onboarding() {
                         </T>
                       </PressableScale>
                       <T variant="caption" muted style={{ fontSize: 9, height: 12 }}>
-                        {notRecommended(d) ? 'önerilmez' : ''}
+                        {notRecommended(d) ? _('onboarding.not_recommended') : ''}
                       </T>
                     </View>
                   ))}
@@ -167,9 +174,7 @@ export default function Onboarding() {
                 )}
                 <View style={[styles.programBox, { backgroundColor: t.primarySoft, borderColor: t.primary }]}>
                   <Icon name="sparkles" size={18} color={t.primary} />
-                  <T style={{ flex: 1 }}>
-                    Senin için <T style={{ fontFamily: Font.heavy }}>{program}</T> programı hazırlayacağım. İstediğin zaman düzenleyebilirsin.
-                  </T>
+                  <T style={{ flex: 1 }}>{_('onboarding.for_you_i_ll_prepare')}<T style={{ fontFamily: Font.heavy }}>{program}</T>{_('onboarding.program_you_can_edit_it')}</T>
                 </View>
               </>
             )}
@@ -183,7 +188,7 @@ export default function Onboarding() {
             )}
             <PressableScale onPress={step < 3 ? next : finish} disabled={disabled} style={[styles.cta, { backgroundColor: t.primary, opacity: disabled ? 0.4 : 1 }]}>
               <T variant="heading" color={t.onPrimary}>
-                {step < 3 ? 'Devam' : 'Başlayalım'}
+                {step < 3 ? _('onboarding.continue') : _('onboarding.let_s_start')}
               </T>
               <Icon name="arrowRight" size={16} color={t.onPrimary} />
             </PressableScale>

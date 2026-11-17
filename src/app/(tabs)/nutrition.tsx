@@ -41,22 +41,26 @@ import {
   weightTrendPerWeek,
   type Macros,
 } from '@/lib/nutrition';
+import { displayFoodName, displayServing } from '@/lib/food-search';
+import { useT } from '@/components/language-provider';
+import { getLanguage, localeData, t as tt, decimalSep } from '@/i18n';
+import { mealLabel } from '@/i18n/labels';
 
-const DOW = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
-const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-const fmt = (n: number) => String(n).replace('.', ',');
+const fmt = (n: number) => String(n).replace('.', decimalSep());
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${fmt(Math.abs(n))}`;
 
 function dayLabel(key: string) {
   const today = dayKey(Date.now());
-  if (key === today) return 'Bugün';
-  if (key === shiftDay(today, -1)) return 'Dün';
-  if (key === shiftDay(today, 1)) return 'Yarın';
+  if (key === today) return tt('common.today');
+  if (key === shiftDay(today, -1)) return tt('nutrition.yesterday');
+  if (key === shiftDay(today, 1)) return tt('nutrition.tomorrow');
   const d = new Date(dayKeyToTs(key));
-  return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  const m = localeData().months[d.getMonth()];
+  return getLanguage() === 'en' ? `${m} ${d.getDate()}` : `${d.getDate()} ${m}`;
 }
 
 export default function Nutrition() {
+  const _ = useT();
   const t = useTheme();
   const sheet = useSheet();
   const [day, setDay] = useState(() => dayKey(Date.now()));
@@ -103,11 +107,11 @@ export default function Nutrition() {
 
   const openLog = (l: FoodLog) =>
     sheet.actions({
-      title: l.name,
-      message: `${Math.round(l.kcal)} kcal${l.serving ? ` · ${l.serving}` : ''}${l.source === 'ai' ? ' · AI tahmini' : ''}`,
+      title: displayFoodName(l.name),
+      message: _('nutrition.kcal', { v: Math.round(l.kcal), v2: l.serving ? ` · ${displayServing(l.serving)}` : '', v3: l.source === 'ai' ? _('nutrition.ai_estimate') : '' }),
       actions: [
         {
-          label: 'Sil',
+          label: _('common.delete'),
           icon: 'trash',
           style: 'destructive',
           onPress: async () => {
@@ -129,8 +133,8 @@ export default function Nutrition() {
       <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
         <HomeBack />
         <ScreenHeader
-          title="Beslenme"
-          subtitle={`${DOW[new Date(dayKeyToTs(day)).getDay()]}`}
+          title={_('common.nutrition')}
+          subtitle={localeData().days[new Date(dayKeyToTs(day)).getDay()]}
           right={<IconButton icon="body" onPress={() => router.push('/body')} />}
         />
 
@@ -149,10 +153,8 @@ export default function Nutrition() {
                 <Icon name="target" size={20} color={t.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <T variant="heading">Hedefini belirle</T>
-                <T variant="caption" secondary>
-                  Boy, yaş ve aktiviteni gir; kalori ve makro hedefini hesaplayalım.
-                </T>
+                <T variant="heading">{_('nutrition.set_your_target')}</T>
+                <T variant="caption" secondary>{_('nutrition.enter_your_height_age_and')}</T>
               </View>
               <Icon name="chevronRight" size={14} color={t.textMuted} />
             </Card>
@@ -165,60 +167,53 @@ export default function Nutrition() {
               <Ring progress={target ? eaten.kcal / target.kcal : 0} size={120} stroke={11} color={over ? t.danger : t.primary}>
                 <T variant="num">{Math.round(eaten.kcal)}</T>
                 <T variant="caption" secondary>
-                  {target ? `/ ${target.kcal} kcal` : 'kcal'}
+                  {target ? _('nutrition.kcal2', { kcal: target.kcal }) : _('common.kcal')}
                 </T>
               </Ring>
               <View style={{ flex: 1, gap: 4 }}>
                 {remaining != null ? (
                   <>
                     <T variant="caption" secondary>
-                      {over ? 'Hedefi aştın' : 'Kalan'}
+                      {over ? _('nutrition.over_target') : _('nutrition.remaining')}
                     </T>
                     <T variant="title" color={over ? t.danger : t.text}>
                       {Math.abs(Math.round(remaining))}
                       <T variant="label" secondary>
-                        {' '}
-                        kcal
-                      </T>
+                        {_('nutrition.kcal3')}</T>
                     </T>
                     {training && (
-                      <T variant="caption" color={t.accent}>
-                        Antrenman günü · +125 kcal
-                      </T>
+                      <T variant="caption" color={t.accent}>{_('nutrition.training_day_125_kcal')}</T>
                     )}
                   </>
                 ) : (
-                  <T secondary>Hedef için vücut analizini tamamla.</T>
+                  <T secondary>{_('nutrition.complete_the_body_analysis_to')}</T>
                 )}
               </View>
             </View>
             {base?.blocked && (
               <View style={[styles.warn, { backgroundColor: t.goldSoft }]}>
-                <T variant="caption" color={t.gold}>
-                  Alt sınır nedeniyle açık oluşturulamıyor: hedef harcamana eşitlendi.
-                </T>
+                <T variant="caption" color={t.gold}>{_('nutrition.a_deficit_can_t_be')}</T>
               </View>
             )}
             <View style={{ gap: 10 }}>
-              <MacroBar label="Protein" value={eaten.protein} goal={target?.protein} color={t.primary} />
-              <MacroBar label="Karbonhidrat" value={eaten.carbs} goal={target?.carbs} color={t.accent} />
-              <MacroBar label="Yağ" value={eaten.fat} goal={target?.fat} color={t.gold} />
+              <MacroBar label={_('common.protein')} value={eaten.protein} goal={target?.protein} color={t.primary} />
+              <MacroBar label={_('nutrition.carbs')} value={eaten.carbs} goal={target?.carbs} color={t.accent} />
+              <MacroBar label={_('common.fat')} value={eaten.fat} goal={target?.fat} color={t.gold} />
             </View>
           </Card>
         </Animated.View>
 
         {quick.length > 0 && (
           <>
-            <SectionHeader title="Tek dokunuşla ekle" />
+            <SectionHeader title={_('nutrition.add_with_one_tap')} />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
               {quick.map((f) => (
                 <PressableScale key={f.id} onPress={() => quickAdd(f)} style={[styles.quick, { backgroundColor: t.surface, borderColor: t.border }]}>
                   <T variant="label" numberOfLines={1} style={{ maxWidth: 150 }}>
-                    {f.name}
+                    {displayFoodName(f.name)}
                   </T>
                   <T variant="caption" secondary>
-                    {Math.round(f.kcal)} kcal
-                  </T>
+                    {_('nutrition.kcal4', { v: Math.round(f.kcal) })}</T>
                 </PressableScale>
               ))}
             </ScrollView>
@@ -230,13 +225,11 @@ export default function Nutrition() {
           const kcal = items.reduce((a, l) => a + l.kcal, 0);
           return (
             <View key={m}>
-              <SectionHeader title={`${m}${items.length ? ` · ${Math.round(kcal)} kcal` : ''}`} action="+ Ekle" onAction={() => router.push({ pathname: '/food/add', params: { meal: m, day } })} />
+              <SectionHeader title={`${mealLabel(m)}${items.length ? ` · ${Math.round(kcal)} kcal` : ''}`} action={_('nutrition.add_meal')} onAction={() => router.push({ pathname: '/food/add', params: { meal: m, day } })} />
               {items.length === 0 ? (
                 <PressableScale onPress={() => router.push({ pathname: '/food/add', params: { meal: m, day } })}>
                   <View style={[styles.emptyMeal, { borderColor: t.border }]}>
-                    <T variant="caption" muted>
-                      Henüz bir şey eklenmedi
-                    </T>
+                    <T variant="caption" muted>{_('nutrition.nothing_added_yet')}</T>
                   </View>
                 </PressableScale>
               ) : (
@@ -247,13 +240,11 @@ export default function Nutrition() {
                         <View style={{ flex: 1 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                             <T variant="label" numberOfLines={1} style={{ flexShrink: 1 }}>
-                              {l.name}
+                              {displayFoodName(l.name)}
                             </T>
                             {l.source === 'ai' && <Icon name="sparkles" size={11} color={t.violet} />}
                           </View>
-                          <T variant="caption" secondary>
-                            P {Math.round(l.protein)} · K {Math.round(l.carbs)} · Y {Math.round(l.fat)}
-                            {l.serving ? ` · ${l.serving}` : ''}
+                          <T variant="caption" secondary>{_('nutrition.p_c_f', { v: Math.round(l.protein), v2: Math.round(l.carbs), v3: Math.round(l.fat), v4: l.serving ? ` · ${displayServing(l.serving)}` : '' })}
                           </T>
                         </View>
                         <T variant="label" style={{ fontFamily: Font.bold }}>
@@ -269,29 +260,29 @@ export default function Nutrition() {
           );
         })}
 
-        <SectionHeader title="Haftalık görünüm" />
+        <SectionHeader title={_('nutrition.weekly_view')} />
         <Card style={{ gap: Spacing.md }}>
           {avg == null ? (
-            <T secondary>Son 7 günde kayıt yok. Birkaç gün öğün ekledikçe ortalama ve trend burada görünür.</T>
+            <T secondary>{_('nutrition.no_entries_in_the_last')}</T>
           ) : (
             <>
               <View style={{ flexDirection: 'row' }}>
-                <Stat2 label="Ortalama alım" value={`${avg}`} unit="kcal/gün" />
-                <Stat2 label="Hedef" value={target ? `${base!.macros.kcal}` : '–'} unit="kcal" />
-                <Stat2 label="Kayıtlı gün" value={`${logged.length}/7`} />
+                <Stat2 label={_('nutrition.average_intake')} value={`${avg}`} unit={_('nutrition.kcal_day')} />
+                <Stat2 label={_('common.target')} value={target ? `${base!.macros.kcal}` : '–'} unit={_('common.kcal')} />
+                <Stat2 label={_('nutrition.days_logged')} value={`${logged.length}/7`} />
               </View>
               <Divider />
               <View style={{ flexDirection: 'row' }}>
-                <Stat2 label="Beklenen değişim" value={expected != null ? signed(expected) : '–'} unit="kg/hafta" />
-                <Stat2 label="Kilo trendi" value={trend != null ? signed(trend) : '–'} unit="kg/hafta" />
-                <Stat2 label="Son kilo" value={weight ? formatWeight(weight.weight) : '–'} unit="kg" />
+                <Stat2 label={_('nutrition.expected_change')} value={expected != null ? signed(expected) : '–'} unit={_('nutrition.kg_week')} />
+                <Stat2 label={_('nutrition.weight_trend')} value={trend != null ? signed(trend) : '–'} unit={_('nutrition.kg_week')} />
+                <Stat2 label={_('nutrition.latest_weight')} value={weight ? formatWeight(weight.weight) : '–'} unit={_('common.kg')} />
               </View>
               <T variant="caption" muted>
                 {trend == null
-                  ? 'Trend için birkaç hafta boyunca kilonu düzenli kaydet (İlerleme sekmesi).'
+                  ? _('nutrition.log_your_weight_regularly_for')
                   : expected != null && Math.abs(trend - expected) > 0.3
-                    ? 'Trend, alımdan beklenenden farklı. Öğünleri eksik girmiş veya su/tuz dalgalanması olabilir; 2-3 hafta izle.'
-                    : 'Trend ve alım birbiriyle uyumlu görünüyor.'}
+                    ? _('nutrition.the_trend_differs_from_what')
+                    : _('nutrition.trend_and_intake_look_consistent')}
               </T>
             </>
           )}
@@ -302,6 +293,7 @@ export default function Nutrition() {
 }
 
 function MacroBar({ label, value, goal, color }: { label: string; value: number; goal?: number; color: string }) {
+  const _ = useT();
   const t = useTheme();
   const p = goal ? Math.min(1, value / goal) : 0;
   return (
@@ -311,9 +303,7 @@ function MacroBar({ label, value, goal, color }: { label: string; value: number;
           {label}
         </T>
         <T variant="caption">
-          {Math.round(value)}
-          {goal ? ` / ${goal}` : ''} g
-        </T>
+          {_('nutrition.g', { v: Math.round(value), v2: goal ? ` / ${goal}` : '' })}</T>
       </View>
       <View style={[styles.track, { backgroundColor: t.surfacePressed }]}>
         <View style={{ width: `${p * 100}%`, height: '100%', borderRadius: 3, backgroundColor: color }} />

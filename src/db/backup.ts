@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { t as tt } from '@/i18n';
 import { applyDataMigrations, DB_VERSION } from './migrate';
 
 /**
@@ -65,20 +66,20 @@ export function parseBackup(text: string): BackupFile {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new BackupError('Bu dosya geçerli bir gymcime yedeği değil (JSON okunamadı).');
+    throw new BackupError(tt('backup.badJson'));
   }
   const b = data as Partial<BackupFile> | null;
   if (!b || typeof b !== 'object' || b.app !== BACKUP_APP || typeof b.tables !== 'object' || b.tables === null) {
-    throw new BackupError('Bu dosya bir gymcime yedeği değil.');
+    throw new BackupError(tt('backup.notBackup'));
   }
   if (b.format !== BACKUP_FORMAT) {
-    throw new BackupError('Yedek dosyasının biçimi desteklenmiyor. Uygulamayı güncellemen gerekebilir.');
+    throw new BackupError(tt('backup.format'));
   }
   if (typeof b.schemaVersion !== 'number' || !Number.isInteger(b.schemaVersion) || b.schemaVersion < 1) {
-    throw new BackupError('Yedeğin sürüm bilgisi geçersiz.');
+    throw new BackupError(tt('backup.version'));
   }
   if (b.schemaVersion > DB_VERSION) {
-    throw new BackupError(`Bu yedek daha yeni bir uygulama sürümünden (şema ${b.schemaVersion}). Bu uygulama en fazla ${DB_VERSION} sürümünü okuyabilir; uygulamayı güncelle.`);
+    throw new BackupError(tt('backup.newer', { schema: b.schemaVersion, max: DB_VERSION }));
   }
   for (const t of BACKUP_TABLES) {
     const rows = (b.tables as Record<string, unknown>)[t];
@@ -123,7 +124,7 @@ export async function importBackup(db: SQLiteDatabase, backup: BackupFile) {
         const vals = keys.map((k) => {
           const v = row[k];
           if (v === null || typeof v === 'number' || typeof v === 'string') return v;
-          throw new BackupError(`Yedekteki "${t}.${k}" değeri geçersiz.`);
+          throw new BackupError(tt('backup.badValue', { field: `${t}.${k}` }));
         });
         await txn.runAsync(`INSERT INTO ${t} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`, ...vals);
       }

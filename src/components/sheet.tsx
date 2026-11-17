@@ -10,6 +10,7 @@ import { PressableScale, T } from '@/components/ui';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { haptic } from '@/lib/haptics';
+import { useT } from '@/components/language-provider';
 
 /**
  * Uygulama genelinde alttan açılan sheet. Sistem `Alert` yerine kullanılır.
@@ -67,11 +68,12 @@ const CLOSE_MS = 220;
 
 export function useSheet() {
   const v = useContext(SheetCtx);
-  if (!v) throw new Error('SheetProvider eksik');
+  if (!v) throw new Error('SheetProvider missing');
   return v;
 }
 
 export function SheetProvider({ children }: { children: ReactNode }) {
+  const _ = useT();
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const [config, setConfig] = useState<SheetConfig | null>(null);
@@ -209,7 +211,7 @@ export function SheetProvider({ children }: { children: ReactNode }) {
                       })}
                       <PressableScale onPress={close} style={styles.action}>
                         <T variant="heading" color={t.textSecondary} style={{ fontSize: 16 }}>
-                          {config.cancelLabel ?? 'Vazgeç'}
+                          {config.cancelLabel ?? _('common.cancel')}
                         </T>
                       </PressableScale>
                     </View>

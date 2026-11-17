@@ -1,4 +1,5 @@
-import { getExerciseMedia, muscleTr } from '@/db/exercise-media';
+import { getExerciseMedia, muscleEn, muscleTr } from '@/db/exercise-media';
+import { equipmentLabel, muscleLabel } from '@/i18n/labels';
 import type { ExerciseKind } from '@/lib/cardio';
 import { normalizeTr } from '@/lib/food-search';
 
@@ -27,7 +28,15 @@ export function filterExercises<T extends LibraryExercise>(list: T[], f: Library
     if (tokens.length === 0) return true;
     const media = getExerciseMedia(e.slug);
     const hay = normalizeTr(
-      [e.name, e.alias ?? '', e.muscle, e.equipment, ...(media ? [...media.primary, ...media.secondary].map(muscleTr) : [])].join(' '),
+      [
+        e.name,
+        e.alias ?? '',
+        e.muscle,
+        e.equipment,
+        muscleLabel(e.muscle, 'en'),
+        equipmentLabel(e.equipment, 'en'),
+        ...(media ? [...media.primary, ...media.secondary].flatMap((m) => [muscleTr(m), muscleEn(m)]) : []),
+      ].join(' '),
     );
     return tokens.every((tok) => hay.includes(tok));
   });

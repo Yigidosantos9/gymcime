@@ -8,26 +8,28 @@ import { Icon, type IconName } from '@/components/icon';
 import { formatMin } from '@/lib/cardio';
 import { HomeBack } from '@/components/tab-back';
 import { useSheet } from '@/components/sheet';
-import { Badge, Card, EmptyState, IconButton, PressableScale, ScreenHeader, T } from '@/components/ui';
+import { Badge, Button, Card, EmptyState, IconButton, PressableScale, ScreenHeader, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { getWeekPlan, listWorkouts, workoutsBetween, type WorkoutListItem } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
 import { formatMinutes, startOfDay } from '@/lib/format';
 import { beginWorkout } from '@/lib/start-workout';
-import { dayStatus, MONTH_NAMES, monthGrid, shiftMonth, shortRoutineName, WEEKDAY_NAMES, WEEKDAY_SHORT, weekdayOf } from '@/lib/week-plan';
+import { dayStatus, monthNames, monthGrid, shiftMonth, shortRoutineName, weekdayNames, weekdayShort, weekdayOf } from '@/lib/week-plan';
+import { useT } from '@/components/language-provider';
+import { localeData } from '@/i18n';
+import { routineLabel } from '@/i18n/labels';
 
-const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-const DOW = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 
 export default function History() {
+  const _ = useT();
   const t = useTheme();
   const { data } = useDbQuery((db) => listWorkouts(db, 500));
 
   const sections: { title: string; count: number; sets: number; data: WorkoutListItem[] }[] = [];
   for (const w of data ?? []) {
     const d = new Date(w.started_at);
-    const title = `${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
+    const title = `${localeData().months[d.getMonth()]} ${d.getFullYear()}`;
     let s = sections[sections.length - 1];
     if (!s || s.title !== title) {
       s = { title, count: 0, sets: 0, data: [] };
@@ -49,7 +51,8 @@ export default function History() {
         ListHeaderComponent={
           <>
             <HomeBack />
-            <ScreenHeader title="Geçmiş" subtitle={data ? `${data.length} antrenman` : undefined} />
+            <ScreenHeader title={_('common.history')} subtitle={data ? _('history.workouts', { count: data.length }) : undefined} />
+            <Button title={_('common.add_a_past_workout')} icon="addCircle" kind="secondary" onPress={() => router.push('/add-past-workout')} style={{ marginBottom: Spacing.md }} />
             <MonthCalendar />
             <Heatmap starts={(data ?? []).map((w) => w.started_at)} />
           </>
@@ -57,7 +60,7 @@ export default function History() {
         ListEmptyComponent={
           data ? (
             <Card>
-              <EmptyState icon="history" title="Geçmiş boş" text="Bitirdiğin antrenmanlar burada birikecek." />
+              <EmptyState icon="history" title={_('history.history_is_empty')} text={_('history.workouts_you_finish_will_pile')} />
             </Card>
           ) : undefined
         }
@@ -67,8 +70,7 @@ export default function History() {
               {section.title}
             </T>
             <T variant="caption" muted>
-              {section.count} antrenman · {section.sets} set
-            </T>
+              {_('history.workouts_sets', { count: section.count, sets: section.sets })}</T>
           </View>
         )}
         renderItem={({ item, index }) => {
@@ -80,7 +82,7 @@ export default function History() {
                   <View style={{ flexDirection: 'row', gap: Spacing.md }}>
                     <View style={[styles.date, { backgroundColor: t.surfaceRaised }]}>
                       <T variant="caption" secondary style={{ fontSize: 10 }}>
-                        {DOW[d.getDay()]}
+                        {localeData().daysShort[d.getDay()]}
                       </T>
                       <T variant="heading" style={{ lineHeight: 20 }}>
                         {d.getDate()}
@@ -89,18 +91,18 @@ export default function History() {
                     <View style={{ flex: 1, gap: 3 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <T variant="heading" numberOfLines={1} style={{ flexShrink: 1 }}>
-                          {item.name}
+                          {routineLabel(item.name)}
                         </T>
-                        {item.pr_count > 0 && <Badge label={`${item.pr_count} rekor`} icon="trophy" tint={t.gold} bg={t.goldSoft} />}
+                        {item.pr_count > 0 && <Badge label={_('history.prs', { count: item.pr_count })} icon="trophy" tint={t.gold} bg={t.goldSoft} />}
                       </View>
                       <T variant="caption" secondary numberOfLines={1}>
                         {item.exercise_names}
                       </T>
                       <View style={styles.meta}>
                         <Meta icon="clock" text={formatMinutes((item.finished_at ?? item.started_at) - item.started_at)} />
-                        <Meta icon="layers" text={`${item.set_count} set`} />
-                        {item.cardio_sec > 0 && <Meta icon="timer" text={`Kardiyo ${formatMin(item.cardio_sec / 60)}`} />}
-                        <Meta icon="barbell" text={`${item.exercise_names ? item.exercise_names.split(' · ').length : 0} egzersiz`} />
+                        <Meta icon="layers" text={_('history.sets', { count: item.set_count })} />
+                        {item.cardio_sec > 0 && <Meta icon="timer" text={_('common.cardio', { v: formatMin(item.cardio_sec / 60) })} />}
+                        <Meta icon="barbell" text={_('history.exercises', { v: item.exercise_names ? item.exercise_names.split(' · ').length : 0 })} />
                       </View>
                     </View>
                   </View>
@@ -119,6 +121,7 @@ export default function History() {
  * kaçırılan planlı günler (daha da soluk). Gün dokununca o günün antrenmanları ya da planı.
  */
 function MonthCalendar() {
+  const _ = useT();
   const t = useTheme();
   const sheet = useSheet();
   const [{ year, month }, setYm] = useState(() => {
@@ -149,18 +152,21 @@ function MonthCalendar() {
     const ws = byDay.get(ts) ?? [];
     const wd = weekdayOf(ts);
     const planned = data?.plan[wd];
-    const title = `${WEEKDAY_NAMES[wd]}, ${new Date(ts).getDate()} ${MONTH_NAMES[new Date(ts).getMonth()]}`;
-    const plannedLine = planned?.routine_id != null ? `Plan: ${planned.routine_name}` : hasPlan ? 'Plan: dinlenme günü' : undefined;
+    const title = `${weekdayNames()[wd]}, ${new Date(ts).getDate()} ${monthNames()[new Date(ts).getMonth()]}`;
+    const plannedLine = planned?.routine_id != null ? _('history.plan_name', { name: routineLabel(planned.routine_name ?? '') }) : hasPlan ? _('history.plan_rest_day') : undefined;
     sheet.actions({
       title,
-      message: [plannedLine, planned?.note].filter(Boolean).join(' · ') || (ws.length === 0 ? 'Bu gün antrenman yok.' : undefined),
-      cancelLabel: 'Kapat',
+      message: [plannedLine, planned?.note].filter(Boolean).join(' · ') || (ws.length === 0 ? _('history.no_workout_on_this_day') : undefined),
+      cancelLabel: _('common.close'),
       actions: [
-        ...ws.map((w) => ({ label: w.name, icon: 'history' as const, onPress: () => router.push(`/session/${w.id}`) })),
+        ...ws.map((w) => ({ label: routineLabel(w.name), icon: 'history' as const, onPress: () => router.push(`/session/${w.id}`) })),
         ...(ts === today && ws.length === 0 && planned?.routine_id != null
-          ? [{ label: `${planned.routine_name} başlat`, icon: 'play' as const, style: 'primary' as const, onPress: () => beginWorkout(db, planned.routine_id, sheet) }]
+          ? [{ label: _('history.start', { routine_name: planned.routine_name }), icon: 'play' as const, style: 'primary' as const, onPress: () => beginWorkout(db, planned.routine_id, sheet) }]
           : []),
-        { label: 'Haftalık planı aç', icon: 'edit' as const, onPress: () => router.push('/week-plan') },
+        ...(ts <= today
+          ? [{ label: _('history.add_a_workout_to_this'), icon: 'addCircle' as const, onPress: () => router.push(`/add-past-workout?date=${ts}`) }]
+          : []),
+        { label: _('history.open_weekly_plan'), icon: 'edit' as const, onPress: () => router.push('/week-plan') },
       ],
     });
   };
@@ -168,16 +174,16 @@ function MonthCalendar() {
   return (
     <Card style={{ marginBottom: Spacing.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm }}>
-        <IconButton icon="chevronLeft" label="Önceki ay" onPress={() => setYm((c) => shiftMonth(c.year, c.month, -1))} bg="transparent" color={t.textSecondary} size={14} />
+        <IconButton icon="chevronLeft" label={_('history.previous_month')} onPress={() => setYm((c) => shiftMonth(c.year, c.month, -1))} bg="transparent" color={t.textSecondary} size={14} />
         <View style={{ flex: 1, alignItems: 'center' }}>
           <T variant="heading">
-            {MONTH_NAMES[month]} {year}
+            {monthNames()[month]} {year}
           </T>
         </View>
-        <IconButton icon="chevronRight" label="Sonraki ay" onPress={() => setYm((c) => shiftMonth(c.year, c.month, 1))} bg="transparent" color={t.textSecondary} size={14} />
+        <IconButton icon="chevronRight" label={_('history.next_month')} onPress={() => setYm((c) => shiftMonth(c.year, c.month, 1))} bg="transparent" color={t.textSecondary} size={14} />
       </View>
       <View style={{ flexDirection: 'row', marginBottom: 4 }}>
-        {WEEKDAY_SHORT.map((d) => (
+        {weekdayShort().map((d) => (
           <T key={d} variant="caption" muted style={{ flex: 1, textAlign: 'center', fontSize: 10 }}>
             {d}
           </T>
@@ -199,7 +205,7 @@ function MonthCalendar() {
                 onPress={() => openDay(c.ts)}
                 hapticOnPress={false}
                 scaleTo={0.94}
-                accessibilityLabel={`${new Date(c.ts).getDate()} ${MONTH_NAMES[new Date(c.ts).getMonth()]}: ${ws.length > 0 ? ws.map((w) => w.name).join(', ') : isPlanned ? `planlı ${planned?.routine_name}` : 'boş'}`}
+                accessibilityLabel={`${new Date(c.ts).getDate()} ${monthNames()[new Date(c.ts).getMonth()]}: ${ws.length > 0 ? ws.map((w) => routineLabel(w.name)).join(', ') : isPlanned ? _('history.planned', { routine_name: planned?.routine_name }) : _('history.empty')}`}
                 style={[
                   styles.calCell,
                   { opacity: c.inMonth ? 1 : 0.35 },
@@ -226,6 +232,7 @@ function MonthCalendar() {
 
 /** Son 15 haftanın antrenman ısı haritası (GitHub tarzı). */
 function Heatmap({ starts }: { starts: number[] }) {
+  const _ = useT();
   const t = useTheme();
   const WEEKS = 15;
   const [today] = useState(() => startOfDay(Date.now()));
@@ -240,12 +247,9 @@ function Heatmap({ starts }: { starts: number[] }) {
   return (
     <Card style={{ marginBottom: Spacing.md }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: Spacing.md }}>
-        <T variant="overline" secondary>
-          Son {WEEKS} hafta
-        </T>
+        <T variant="overline" secondary>{_('history.last_weeks', { WEEKS: WEEKS })}</T>
         <T variant="caption" color={t.primary} style={{ fontFamily: Font.bold }}>
-          {active} aktif gün
-        </T>
+          {_('history.active_days', { count: active })}</T>
       </View>
       <View style={{ flexDirection: 'row', gap: 4, justifyContent: 'space-between' }}>
         {Array.from({ length: WEEKS }).map((_, w) => (

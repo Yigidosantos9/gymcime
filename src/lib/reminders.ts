@@ -1,3 +1,6 @@
+import { getLanguage, translate, type Lang, type MsgKey, type Params } from '@/i18n';
+import { routineLabel } from '@/i18n/labels';
+
 /** Hatırlatıcılar: ayarlar + planlanacak bildirim listesinin saf hesabı (expo-notifications'a dokunmaz). */
 
 export type TimeOfDay = { hour: number; minute: number };
@@ -64,7 +67,8 @@ export type PlanDay = { weekday: number; routine_name: string | null };
  * Antrenman: haftalık planda en az bir rutin varsa YALNIZCA rutin atanmış günlerde ve rutin adıyla
  * ("Bugün: Sırt günü 💪"); plan yoksa seçilen günlerde nötr metinle.
  */
-export function buildReminderSchedule(s: ReminderSettings, plan: PlanDay[]): PlannedNotification[] {
+export function buildReminderSchedule(s: ReminderSettings, plan: PlanDay[], lang: Lang = getLanguage()): PlannedNotification[] {
+  const tl = (key: MsgKey, params?: Params) => translate(lang, key, params);
   const out: PlannedNotification[] = [];
   if (s.workout.on) {
     const planned = plan.filter((p) => p.routine_name);
@@ -72,8 +76,8 @@ export function buildReminderSchedule(s: ReminderSettings, plan: PlanDay[]): Pla
       for (const p of planned) {
         out.push({
           id: `${REMINDER_ID_PREFIX}workout:${p.weekday}`,
-          title: 'Antrenman zamanı',
-          body: `Bugün: ${p.routine_name} 💪`,
+          title: tl('reminder.workout.title'),
+          body: tl('reminder.workout.routine', { name: routineLabel(p.routine_name ?? '', lang) }),
           weekday: toExpoWeekday(p.weekday),
           hour: s.workout.hour,
           minute: s.workout.minute,
@@ -83,8 +87,8 @@ export function buildReminderSchedule(s: ReminderSettings, plan: PlanDay[]): Pla
       for (const d of s.workout.days) {
         out.push({
           id: `${REMINDER_ID_PREFIX}workout:${d}`,
-          title: 'Antrenman zamanı',
-          body: 'Bugün antrenman günü, hazır mısın? 💪',
+          title: tl('reminder.workout.title'),
+          body: tl('reminder.workout.neutral'),
           weekday: toExpoWeekday(d),
           hour: s.workout.hour,
           minute: s.workout.minute,
@@ -95,8 +99,8 @@ export function buildReminderSchedule(s: ReminderSettings, plan: PlanDay[]): Pla
   if (s.weigh.on) {
     out.push({
       id: `${REMINDER_ID_PREFIX}weigh`,
-      title: 'Tartılma günü',
-      body: 'Sabah, aç karnına tartılıp kilonu kaydetmeyi unutma.',
+      title: tl('reminder.weigh.title'),
+      body: tl('reminder.weigh.body'),
       weekday: toExpoWeekday(s.weigh.day),
       hour: s.weigh.hour,
       minute: s.weigh.minute,
@@ -105,8 +109,8 @@ export function buildReminderSchedule(s: ReminderSettings, plan: PlanDay[]): Pla
   if (s.meal.on) {
     out.push({
       id: `${REMINDER_ID_PREFIX}meal`,
-      title: 'Öğünlerini kaydet',
-      body: 'Bugün yediklerini eklemek için bir dakikan var mı?',
+      title: tl('reminder.meal.title'),
+      body: tl('reminder.meal.body'),
       hour: s.meal.hour,
       minute: s.meal.minute,
     });

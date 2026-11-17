@@ -17,15 +17,17 @@ import { formatDate, formatDayLong, formatWeight } from '@/lib/format';
 import { formatClock, formatHold, formatKm, formatPace, isTimeBased } from '@/lib/cardio';
 import { haptic } from '@/lib/haptics';
 import { formatRest, REST_PRESETS } from '@/lib/rest';
+import { useT } from '@/components/language-provider';
+import { muscleLabel, equipmentLabel } from '@/i18n/labels';
 
 type Metric = 'best1rm' | 'top_weight' | 'max_reps';
-const METRICS: { key: Metric; label: string }[] = [
-  { key: 'best1rm', label: 'Tahmini 1RM' },
-  { key: 'top_weight', label: 'En ağır' },
-  { key: 'max_reps', label: 'En çok tekrar' },
-];
-
 export default function ExerciseDetail() {
+  const _ = useT();
+  const METRICS: { key: Metric; label: string }[] = [
+    { key: 'best1rm', label: _('exercise.estimated_1rm') },
+    { key: 'top_weight', label: _('exercise.heaviest') },
+    { key: 'max_reps', label: _('exercise.most_reps') },
+  ];
   const t = useTheme();
   const sheet = useSheet();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -51,12 +53,12 @@ export default function ExerciseDetail() {
   const best1rm = Math.max(0, ...history.map((h) => h.best1rm));
   const heaviest = Math.max(0, ...history.map((h) => h.top_weight));
   const bestReps = Math.max(0, ...history.map((h) => h.max_reps));
-  const fmt = (v: number) => (metric === 'max_reps' ? `${Math.round(v)} tekrar` : `${formatWeight(Math.round(v * 2) / 2)} kg`);
+  const fmt = (v: number) => (metric === 'max_reps' ? _('common.reps_n', { count: Math.round(v) }) : `${formatWeight(Math.round(v * 2) / 2)} kg`);
   const rest = exercise.rest_seconds ?? profileRest;
 
   const pickRest = () =>
     sheet.custom({
-      title: 'Varsayılan dinlenme',
+      title: _('exercise.default_rest'),
       render: (close) => (
         <View style={{ gap: Spacing.md }}>
           <View style={styles.presetGrid}>
@@ -77,7 +79,7 @@ export default function ExerciseDetail() {
             ))}
           </View>
           <Button
-            title={`Genel ayarı kullan (${formatRest(profileRest)})`}
+            title={_('exercise.use_general_setting', { v: formatRest(profileRest) })}
             kind="secondary"
             onPress={async () => {
               await setExerciseDefaultRest(db, exercise.id, null);
@@ -97,7 +99,7 @@ export default function ExerciseDetail() {
         <View style={{ flex: 1 }}>
           <T variant="title">{exercise.name}</T>
           <T secondary variant="label">
-            {exercise.muscle} · {exercise.equipment}
+            {muscleLabel(exercise.muscle)} · {equipmentLabel(exercise.equipment)}
           </T>
         </View>
       </View>
@@ -106,9 +108,7 @@ export default function ExerciseDetail() {
 
       <PressableScale onPress={pickRest} style={[styles.restRow, { backgroundColor: t.surface, borderColor: t.border }]}>
         <Icon name="timer" size={16} color={t.primary} />
-        <T variant="label" style={{ flex: 1 }}>
-          Varsayılan dinlenme
-        </T>
+        <T variant="label" style={{ flex: 1 }}>{_('exercise.default_rest')}</T>
         <T variant="label" color={t.primary} style={{ fontFamily: Font.bold }}>
           {formatRest(rest)}
         </T>
@@ -118,7 +118,7 @@ export default function ExerciseDetail() {
       {timeBased ? (
         cardio.length === 0 ? (
           <Card style={{ marginTop: Spacing.lg }}>
-            <EmptyState icon="chart" title="Henüz yapmadın" text="Bu egzersizi bir antrenmanda tamamladığında geçmişin burada görünecek." />
+            <EmptyState icon="chart" title={_('exercise.not_done_yet')} text={_('exercise.your_history_will_show_up')} />
           </Card>
         ) : (
           <>
@@ -126,8 +126,8 @@ export default function ExerciseDetail() {
               <Animated.View entering={FadeInDown.duration(350)}>
                 <Card style={{ marginTop: Spacing.lg }}>
                   <View style={{ flexDirection: 'row', gap: 8, marginBottom: Spacing.md }}>
-                    <Chip label="Süre (seans toplamı)" active={cMetric === 'duration_sec'} onPress={() => setCMetric('duration_sec')} />
-                    <Chip label="Mesafe (seans toplamı)" active={cMetric === 'distance_m'} onPress={() => setCMetric('distance_m')} />
+                    <Chip label={_('exercise.duration_session_total')} active={cMetric === 'duration_sec'} onPress={() => setCMetric('duration_sec')} />
+                    <Chip label={_('exercise.distance_session_total')} active={cMetric === 'distance_m'} onPress={() => setCMetric('distance_m')} />
                   </View>
                   <LineChart
                     values={cardio.map((h) => (cMetric === 'duration_sec' ? h.duration_sec / 60 : h.distance_m / 1000))}
@@ -138,15 +138,15 @@ export default function ExerciseDetail() {
                 </Card>
               </Animated.View>
             )}
-            <SectionHeader title="Rekorlar 🏆" />
+            <SectionHeader title={_('exercise.records')} />
             <Card>
               <View style={{ flexDirection: 'row' }}>
-                <Stat label="En uzun süre" value={isCardio ? formatClock(Math.max(...cardio.map((h) => h.max_set_sec))) : formatHold(Math.max(...cardio.map((h) => h.max_set_sec)))} />
-                {isCardio && <Stat label="En uzun mesafe" value={formatKm(Math.max(...cardio.map((h) => h.max_set_m)))} unit="km" />}
-                {isCardio && <Stat label="En hızlı tempo" value={formatPace(cardio.some((h) => h.best_pace != null) ? Math.min(...cardio.filter((h) => h.best_pace != null).map((h) => h.best_pace!)) : null)} />}
+                <Stat label={_('exercise.longest_duration')} value={isCardio ? formatClock(Math.max(...cardio.map((h) => h.max_set_sec))) : formatHold(Math.max(...cardio.map((h) => h.max_set_sec)))} />
+                {isCardio && <Stat label={_('exercise.longest_distance')} value={formatKm(Math.max(...cardio.map((h) => h.max_set_m)))} unit="km" />}
+                {isCardio && <Stat label={_('exercise.fastest_pace')} value={formatPace(cardio.some((h) => h.best_pace != null) ? Math.min(...cardio.filter((h) => h.best_pace != null).map((h) => h.best_pace!)) : null)} />}
               </View>
             </Card>
-            <SectionHeader title="Seanslar" />
+            <SectionHeader title={_('exercise.sessions')} />
             {[...cardio].reverse().map((h) => (
               <PressableScale key={h.workout_id} onPress={() => router.push(`/session/${h.workout_id}`)} scaleTo={0.98}>
                 <Card style={{ marginBottom: Spacing.sm }}>
@@ -157,8 +157,7 @@ export default function ExerciseDetail() {
                     </T>
                   </View>
                   <T variant="caption" secondary style={{ marginTop: 4 }}>
-                    {h.sets} set{h.distance_m > 0 ? ` · ${formatKm(h.distance_m)} km` : ''}
-                    {h.best_pace != null ? ` · ${formatPace(h.best_pace)}` : ''}
+                    {_('exercise.sets', { count: h.sets, v: h.distance_m > 0 ? _('exercise.km', { v: formatKm(h.distance_m) }) : '', v2: h.best_pace != null ? ` · ${formatPace(h.best_pace)}` : '' })}
                   </T>
                 </Card>
               </PressableScale>
@@ -167,7 +166,7 @@ export default function ExerciseDetail() {
         )
       ) : history.length === 0 ? (
         <Card style={{ marginTop: Spacing.lg }}>
-          <EmptyState icon="chart" title="Henüz yapmadın" text="Bu egzersizi bir antrenmanda tamamladığında grafiklerin burada görünecek." />
+          <EmptyState icon="chart" title={_('exercise.not_done_yet')} text={_('exercise.your_charts_will_show_up')} />
         </Card>
       ) : (
         <>
@@ -182,24 +181,22 @@ export default function ExerciseDetail() {
             </Card>
           </Animated.View>
 
-          <SectionHeader title="Rekorlar 🏆" />
+          <SectionHeader title={_('exercise.records')} />
           <Card>
             <View style={{ flexDirection: 'row' }}>
-              <Stat label="Tahmini 1RM" value={formatWeight(Math.round(best1rm * 2) / 2)} unit="kg" />
-              <Stat label="En ağır" value={formatWeight(heaviest)} unit="kg" />
-              <Stat label="En çok tekrar" value={String(bestReps)} />
+              <Stat label={_('exercise.estimated_1rm')} value={formatWeight(Math.round(best1rm * 2) / 2)} unit={_('common.kg')} />
+              <Stat label={_('exercise.heaviest')} value={formatWeight(heaviest)} unit={_('common.kg')} />
+              <Stat label={_('exercise.most_reps')} value={String(bestReps)} />
             </View>
           </Card>
 
-          <SectionHeader title="Seanslar" />
+          <SectionHeader title={_('exercise.sessions')} />
           {[...history].reverse().map((h) => (
             <PressableScale key={h.workout_id} onPress={() => router.push(`/session/${h.workout_id}`)} scaleTo={0.98}>
               <Card style={{ marginBottom: Spacing.sm }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                   <T variant="label">{formatDayLong(h.started_at)}</T>
-                  <T variant="label" color={t.primary} style={{ fontFamily: Font.bold }}>
-                    ~{formatWeight(Math.round(h.best1rm * 2) / 2)} kg
-                  </T>
+                  <T variant="label" color={t.primary} style={{ fontFamily: Font.bold }}>{_('exercise.kg', { v: formatWeight(Math.round(h.best1rm * 2) / 2) })}</T>
                 </View>
                 <T variant="caption" secondary style={{ marginTop: 4 }}>
                   {h.sets

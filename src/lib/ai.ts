@@ -7,6 +7,7 @@ import * as SecureStore from 'expo-secure-store';
 import { loadAnthropic } from '@/lib/anthropic-sdk';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { getLanguage } from '@/i18n';
 import { deleteGuide, exerciseHistory, getGuideRow, getSetting, saveGuide, setSetting, type Exercise } from '@/db/queries';
 
 import {
@@ -90,7 +91,7 @@ export async function testConnection(): Promise<void> {
     const res = await client.messages.create({
       model: MODELS.fast,
       max_tokens: 16,
-      messages: [{ role: 'user', content: 'Sadece "tamam" yaz.' }],
+      messages: [{ role: 'user', content: 'Reply with just "ok".' }],
     });
     if (res.stop_reason === 'refusal') throw new AiError('refusal');
   } catch (e) {
@@ -100,8 +101,8 @@ export async function testConnection(): Promise<void> {
 
 // ───────────────────────── Egzersiz rehberi ─────────────────────────
 
-export async function getCachedGuide(db: SQLiteDatabase, exerciseId: number): Promise<{ guide: ExerciseGuide; createdAt: number } | null> {
-  const row = await getGuideRow(db, exerciseId);
+export async function getCachedGuide(db: SQLiteDatabase, exerciseId: number, lang = getLanguage()): Promise<{ guide: ExerciseGuide; createdAt: number } | null> {
+  const row = await getGuideRow(db, exerciseId, lang);
   const guide = parseCachedGuide(row?.json);
   return row && guide ? { guide, createdAt: row.created_at } : null;
 }
@@ -111,19 +112,20 @@ export async function getCachedGuide(db: SQLiteDatabase, exerciseId: number): Pr
  * Egzersiz başına bir kez üretilir; "yeniden oluştur" force ile çağırır.
  */
 export async function generateGuide(db: SQLiteDatabase, exercise: Exercise, opts: { force?: boolean; tier?: ModelTier } = {}): Promise<ExerciseGuide> {
+  const lang = getLanguage(); // rehber seçili dilde istenir ve dile göre ayrı önbelleğe yazılır
   if (!opts.force) {
-    const cached = await getCachedGuide(db, exercise.id);
+    const cached = await getCachedGuide(db, exercise.id, lang);
     if (cached) return cached.guide;
   }
   try {
     const client = await makeClient();
     const pref = await getModelPref(db);
     const model = resolveModel(opts.tier ?? 'smart', pref);
-    const history = summarizeHistory(await exerciseHistory(db, exercise.id));
-    const prompt = guideUserPrompt({ name: exercise.name, muscle: exercise.muscle, equipment: exercise.equipment, history });
-    const res = await client.beta.messages.create(buildGuideRequest(model, prompt));
+    const history = summarizeHistory(await exerciseHistory(db, exercise.id), Date.now(), lang);
+    const prompt = guideUserPrompt({ name: exercise.name, muscle: exercise.muscle, equipment: exercise.equipment, history }, lang);
+    const res = await client.beta.messages.create(buildGuideRequest(model, prompt, lang));
     const guide = validateGuide(extractJson(res));
-    await saveGuide(db, exercise.id, JSON.stringify(guide), model);
+    await saveGuide(db, exercise.id, JSON.stringify(guide), model, Date.now(), lang);
     return guide;
   } catch (e) {
     throw toAiError(e);
@@ -131,7 +133,7 @@ export async function generateGuide(db: SQLiteDatabase, exercise: Exercise, opts
 }
 
 export async function resetGuide(db: SQLiteDatabase, exerciseId: number) {
-  await deleteGuide(db, exerciseId);
+  await deleteGuide(db, exerciseId, getLanguage());
 }
 
 // ───────────────────────── Yemek tahmini ─────────────────────────
@@ -143,7 +145,7 @@ export async function estimateMeal(db: SQLiteDatabase, input: MealEstimateInput)
     const client = await makeClient();
     const pref = await getModelPref(db);
     const model = resolveModel(mealTier(input), pref);
-    const res = await client.beta.messages.create(buildMealRequest(model, input));
+    const res = await client.beta.messages.create(buildMealRequest(model, input, getLanguage()));
     return validateMealEstimate(extractJson(res));
   } catch (e) {
     throw toAiError(e);

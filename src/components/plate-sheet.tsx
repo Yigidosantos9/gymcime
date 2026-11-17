@@ -9,12 +9,15 @@ import { Font, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatWeight, parseNumber } from '@/lib/format';
 import { BAR_OPTIONS, calcPlates, describePerSide, PLATE_COLORS } from '@/lib/plates';
+import { useT } from '@/components/language-provider';
+import { t as tt } from '@/i18n';
 
 /** Plakanın çizim yüksekliği (büyük plaka daha uzun). */
 const plateHeight = (p: number) => 34 + Math.min(p, 25) * 2.2;
 const plateWidth = (p: number) => (p >= 10 ? 14 : p >= 2.5 ? 10 : 7);
 
 function PlateForm({ initial, bar: bar0, plates, step }: { initial: number; bar: number; plates: number[]; step: number }) {
+  const _ = useT();
   const t = useTheme();
   const space = useKeyboardSpace();
   const [text, setText] = useState(initial > 0 ? formatWeight(initial) : '');
@@ -26,7 +29,7 @@ function PlateForm({ initial, bar: bar0, plates, step }: { initial: number; bar:
   return (
     <View style={{ gap: Spacing.md, paddingBottom: space }}>
       <View style={styles.row}>
-        <PressableScale onPress={() => bump(-step)} accessibilityRole="button" accessibilityLabel="Ağırlığı azalt" style={[styles.step, { backgroundColor: t.surfacePressed }]}>
+        <PressableScale onPress={() => bump(-step)} accessibilityRole="button" accessibilityLabel={_('plateSheet.decrease_weight')} style={[styles.step, { backgroundColor: t.surfacePressed }]}>
           <Icon name="minus" size={16} color={t.text} />
         </PressableScale>
         <TextInput
@@ -34,23 +37,21 @@ function PlateForm({ initial, bar: bar0, plates, step }: { initial: number; bar:
           onChangeText={setText}
           keyboardType="decimal-pad"
           selectTextOnFocus
-          accessibilityLabel="Hedef ağırlık (kg)"
+          accessibilityLabel={_('plateSheet.target_weight_kg')}
           placeholder="0"
           placeholderTextColor={t.textMuted}
           style={[styles.input, { color: t.text, backgroundColor: t.surfacePressed }]}
         />
-        <T secondary>kg</T>
-        <PressableScale onPress={() => bump(step)} accessibilityRole="button" accessibilityLabel="Ağırlığı artır" style={[styles.step, { backgroundColor: t.surfacePressed }]}>
+        <T secondary>{_('common.kg')}</T>
+        <PressableScale onPress={() => bump(step)} accessibilityRole="button" accessibilityLabel={_('plateSheet.increase_weight')} style={[styles.step, { backgroundColor: t.surfacePressed }]}>
           <Icon name="add" size={16} color={t.primary} />
         </PressableScale>
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-        <T variant="label" secondary>
-          Bar
-        </T>
+        <T variant="label" secondary>{_('plateSheet.bar')}</T>
         {BAR_OPTIONS.map((b) => (
-          <Chip key={b} label={`${b} kg`} active={bar === b} onPress={() => setBar(b)} />
+          <Chip key={b} label={_('common.kg3', { b: b })} active={bar === b} onPress={() => setBar(b)} />
         ))}
       </View>
 
@@ -77,15 +78,11 @@ function PlateForm({ initial, bar: bar0, plates, step }: { initial: number; bar:
       </View>
 
       <View style={{ alignItems: 'center', gap: 2 }}>
-        <T variant="caption" secondary>
-          Her tarafa
-        </T>
+        <T variant="caption" secondary>{_('plateSheet.per_side')}</T>
         <T variant="heading" style={{ fontSize: 20 }}>
           {describePerSide(res.perSide)}
         </T>
-        <T variant="caption" muted>
-          Toplam {formatWeight(res.achieved)} kg (bar {formatWeight(bar)} + 2 × {formatWeight(Math.round((res.achieved - bar) * 50) / 100)})
-        </T>
+        <T variant="caption" muted>{_('plateSheet.total_kg_bar_2', { v: formatWeight(res.achieved), v2: formatWeight(bar), v3: formatWeight(Math.round((res.achieved - bar) * 50) / 100) })}</T>
       </View>
       {res.warning && (
         <View style={[styles.warn, { backgroundColor: t.goldSoft }]}>
@@ -102,7 +99,7 @@ function PlateForm({ initial, bar: bar0, plates, step }: { initial: number; bar:
 /** Halter için plaka hesaplayıcı sheet'i. `initial` = açılışta hedef ağırlık, `step` = ± adımı. */
 export function openPlateSheet(sheet: ReturnType<typeof useSheet>, opts: { initial: number; bar: number; plates: number[]; step: number }) {
   sheet.custom({
-    title: 'Plaka hesaplayıcı',
+    title: tt('common.plate_calculator'),
     render: () => <PlateForm initial={opts.initial} bar={opts.bar} plates={opts.plates} step={opts.step > 0 ? opts.step : 2.5} />,
   });
 }

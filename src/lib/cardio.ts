@@ -3,14 +3,21 @@
  *  strength = kg × tekrar · bodyweight = tekrar (+ ek ağırlık) · cardio = süre + mesafe (+ eğim/seviye, kalori) · timed = süre
  */
 
+import { t, type MsgKey, decimalSep } from '@/i18n';
+
 export type ExerciseKind = 'strength' | 'bodyweight' | 'cardio' | 'timed';
 
-export const EXERCISE_KINDS: { key: ExerciseKind; label: string; hint: string }[] = [
-  { key: 'strength', label: 'Ağırlık', hint: 'kg × tekrar' },
-  { key: 'bodyweight', label: 'Vücut ağırlığı', hint: 'tekrar (+ ek kg)' },
-  { key: 'cardio', label: 'Kardiyo', hint: 'süre + mesafe' },
-  { key: 'timed', label: 'Süreli', hint: 'süre (ör. plank)' },
-];
+const kindEntry = (key: ExerciseKind) => ({
+  key,
+  get label() {
+    return t(`kind.${key}` as MsgKey);
+  },
+  get hint() {
+    return t(`kind.${key}.hint` as MsgKey);
+  },
+});
+
+export const EXERCISE_KINDS: { key: ExerciseKind; label: string; hint: string }[] = (['strength', 'bodyweight', 'cardio', 'timed'] as ExerciseKind[]).map(kindEntry);
 
 export function normalizeKind(k: string | null | undefined): ExerciseKind {
   return k === 'bodyweight' || k === 'cardio' || k === 'timed' ? k : 'strength';
@@ -52,14 +59,14 @@ export function parseClock(text: string): number | null {
 /** Süreli hareket için "45 sn" / "1:30". */
 export function formatHold(sec: number | null | undefined) {
   if (sec == null) return '–';
-  return sec < 60 ? `${Math.round(sec)} sn` : formatClock(sec);
+  return sec < 60 ? t('rest.sec', { n: Math.round(sec) }) : formatClock(sec);
 }
 
 /** Metre → "3,2" (km). */
 export function formatKm(m: number | null | undefined) {
   if (m == null || !Number.isFinite(m)) return '–';
   const km = Math.round(m / 10) / 100; // 2 basamak
-  return String(km).replace('.', ',');
+  return String(km).replace('.', decimalSep());
 }
 
 /** "3,2" → 3200 (metre). Geçersiz/0 → null. */
@@ -77,14 +84,14 @@ export function paceOf(durationSec: number | null | undefined, distanceM: number
 }
 
 export function formatPace(secPerKm: number | null) {
-  return secPerKm == null ? '–' : `${formatClock(secPerKm)} /km`;
+  return secPerKm == null ? '–' : t('unit.perKm', { v: formatClock(secPerKm) });
 }
 
 /** Dakika → "1 sa 05 dk" / "42 dk". */
 export function formatMin(totalMin: number) {
   const m = Math.round(totalMin);
-  if (m < 60) return `${m} dk`;
-  return `${Math.floor(m / 60)} sa ${String(m % 60).padStart(2, '0')} dk`;
+  if (m < 60) return t('format.min', { n: m });
+  return t('format.hourMin', { h: Math.floor(m / 60), m: String(m % 60).padStart(2, '0') });
 }
 
 // ───────────── Öneri ve rekor ─────────────
@@ -106,14 +113,14 @@ export function suggestCardio(history: CardioSession[], kind: 'cardio' | 'timed'
   const last = history.find((h) => h.sets.some((s) => (s.duration_sec ?? 0) > 0));
   if (!last) {
     return kind === 'timed'
-      ? { duration_sec: null, distance_m: null, reason: 'İlk kez: rahat tutabildiğin kadar dene.' }
-      : { duration_sec: null, distance_m: null, reason: 'İlk kez: rahat bir tempoda başla, süreyi gir.' };
+      ? { duration_sec: null, distance_m: null, reason: t('cardio.firstTimed') }
+      : { duration_sec: null, distance_m: null, reason: t('cardio.firstCardio') };
   }
   const best = last.sets.reduce((a, s) => ((s.duration_sec ?? 0) > (a.duration_sec ?? 0) ? s : a));
   const dur = best.duration_sec!;
   if (kind === 'timed') {
     const next = dur + (dur >= 60 ? 10 : 5);
-    return { duration_sec: next, distance_m: null, reason: `Geçen sefer ${formatHold(dur)} → bugün ${formatHold(next)}` };
+    return { duration_sec: next, distance_m: null, reason: t('cardio.lastTimed', { last: formatHold(dur), next: formatHold(next) }) };
   }
   const nextMin = Math.round(dur / 60) + Math.max(1, Math.round((dur / 60) * 0.1));
   const next = nextMin * 60;
@@ -122,7 +129,7 @@ export function suggestCardio(history: CardioSession[], kind: 'cardio' | 'timed'
   return {
     duration_sec: next,
     distance_m: dist,
-    reason: `Geçen sefer ${prevTxt} → bugün ${formatMin(nextMin)}${dist ? ` · ${formatKm(dist)} km` : ''}`,
+    reason: t('cardio.lastCardio', { last: prevTxt, next: `${formatMin(nextMin)}${dist ? ` · ${formatKm(dist)} km` : ''}` }),
   };
 }
 
@@ -158,7 +165,7 @@ export function describeCardioSet(
 ) {
   const parts: string[] = [kind === 'timed' ? formatHold(s.duration_sec) : formatClock(s.duration_sec)];
   if (s.distance_m) parts.push(`${formatKm(s.distance_m)} km`);
-  if (s.level) parts.push(`seviye ${String(s.level).replace('.', ',')}`);
+  if (s.level) parts.push(t('unit.level', { v: String(s.level).replace('.', decimalSep()) }));
   if (s.kcal) parts.push(`${Math.round(s.kcal)} kcal`);
   return parts.join(' · ');
 }
@@ -177,11 +184,11 @@ export function parseHold(text: string): number | null {
 export function cardioPrTexts(prev: CardioBests, s: CardioSet, kind: 'cardio' | 'timed' = 'cardio'): string[] {
   const out: string[] = [];
   if (prev.duration > 0 && (s.duration_sec ?? 0) > prev.duration) {
-    out.push(`En uzun süre ${kind === 'timed' ? formatHold(s.duration_sec) : formatClock(s.duration_sec)}`);
+    out.push(t('cardio.prDuration', { v: kind === 'timed' ? formatHold(s.duration_sec) : formatClock(s.duration_sec) }));
   }
   if (kind === 'timed') return out;
-  if (prev.distance > 0 && (s.distance_m ?? 0) > prev.distance) out.push(`En uzun mesafe ${formatKm(s.distance_m)} km`);
+  if (prev.distance > 0 && (s.distance_m ?? 0) > prev.distance) out.push(t('cardio.prDistance', { v: formatKm(s.distance_m) }));
   const p = paceOf(s.duration_sec, s.distance_m);
-  if (prev.pace != null && p != null && p < prev.pace - 0.01) out.push(`En hızlı tempo ${formatPace(p)}`);
+  if (prev.pace != null && p != null && p < prev.pace - 0.01) out.push(t('cardio.prPace', { v: formatPace(p) }));
   return out;
 }

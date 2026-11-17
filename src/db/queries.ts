@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { currentLocale } from '@/i18n';
 
 import {
   detectStyle,
@@ -328,7 +329,7 @@ export function sortRoutines<T extends { name: string; last_done: number | null;
     case 'recent':
       return copy.sort((a, b) => (b.last_done ?? 0) - (a.last_done ?? 0) || a.sort_order - b.sort_order || a.id - b.id);
     case 'name':
-      return copy.sort((a, b) => a.name.localeCompare(b.name, 'tr') || a.id - b.id);
+      return copy.sort((a, b) => a.name.localeCompare(b.name, currentLocale()) || a.id - b.id);
     case 'created':
       return copy.sort((a, b) => b.created_at - a.created_at || b.id - a.id);
     default:
@@ -409,6 +410,8 @@ export async function recentSessionsBatch(
   exerciseIds: number[],
   excludeWorkoutId: number,
   limit = 4,
+  /** Yalnızca bu zamandan (dahil) önce başlayan seanslar — geçmişe eklenen antrenmanın "önceki"si kendinden eski olmalı. */
+  before: number = Number.MAX_SAFE_INTEGER,
 ): Promise<Map<number, Session[]>> {
   const out = new Map<number, Session[]>();
   const uniq = [...new Set(exerciseIds)];
@@ -424,10 +427,11 @@ export async function recentSessionsBatch(
          JOIN sets s ON s.workout_exercise_id = we.id AND s.done = 1 AND s.reps > 0 AND s.set_type != 'warmup'
          WHERE we.exercise_id IN (${marks})
        ) x JOIN workouts w ON w.id = x.workout_id
-       WHERE w.finished_at IS NOT NULL AND w.id != ?
+       WHERE w.finished_at IS NOT NULL AND w.id != ? AND w.started_at <= ?
      ) WHERE rn <= ? ORDER BY exercise_id, rn`,
     ...uniq,
     excludeWorkoutId,
+    before,
     limit,
   );
   if (workouts.length === 0) return out;
@@ -457,7 +461,7 @@ export async function recentSessions(db: SQLiteDatabase, exerciseId: number, exc
 }
 
 /** Kardiyo/süreli egzersizlerin son N bitmiş seansı (en yeni başta), bu antrenman hariç. */
-export async function recentCardioBatch(db: SQLiteDatabase, exerciseIds: number[], excludeWorkoutId: number, limit = 4) {
+export async function recentCardioBatch(db: SQLiteDatabase, exerciseIds: number[], excludeWorkoutId: number, limit = 4, before: number = Number.MAX_SAFE_INTEGER) {
   const out = new Map<number, CardioSession[]>();
   const uniq = [...new Set(exerciseIds)];
   for (const id of uniq) out.set(id, []);
@@ -465,9 +469,10 @@ export async function recentCardioBatch(db: SQLiteDatabase, exerciseIds: number[
   const rows = await db.getAllAsync<{ exercise_id: number; workout_id: number; started_at: number; duration_sec: number | null; distance_m: number | null }>(
     `SELECT we.exercise_id, w.id AS workout_id, w.started_at, s.duration_sec, s.distance_m
      FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id JOIN workouts w ON w.id = we.workout_id
-     WHERE ${TIME_DONE_SQL} AND w.finished_at IS NOT NULL AND w.id != ? AND we.exercise_id IN (${uniq.map(() => '?').join(',')})
+     WHERE ${TIME_DONE_SQL} AND w.finished_at IS NOT NULL AND w.id != ? AND w.started_at <= ? AND we.exercise_id IN (${uniq.map(() => '?').join(',')})
      ORDER BY w.started_at DESC, w.id DESC, we.position, s.position`,
     excludeWorkoutId,
+    before,
     ...uniq,
   );
   const byKey = new Map<string, CardioSession>();
@@ -508,12 +513,14 @@ export async function getWorkoutDetail(db: SQLiteDatabase, workoutId: number, op
     exercises.filter((e) => !isTimeBased(e.kind)).map((e) => e.exercise_id),
     workoutId,
     4,
+    workout.started_at,
   );
   const cardioHistories = await recentCardioBatch(
     db,
     exercises.filter((e) => isTimeBased(e.kind)).map((e) => e.exercise_id),
     workoutId,
     4,
+    workout.started_at,
   );
   for (const ex of exercises) {
     if (isTimeBased(ex.kind)) {
@@ -573,6 +580,12 @@ export async function addExercisesToWorkout(db: SQLiteDatabase, workoutId: numbe
       }
     }
   });
+}
+
+/** Bir antrenmandaki egzersiz kimlikleri (seçicide "Antrenmanda var" etiketi için). */
+export async function getWorkoutExerciseIds(db: SQLiteDatabase, workoutId: number): Promise<number[]> {
+  const rows = await db.getAllAsync<{ exercise_id: number }>('SELECT DISTINCT exercise_id FROM workout_exercises WHERE workout_id = ?', workoutId);
+  return rows.map((r) => r.exercise_id);
 }
 
 export async function removeWorkoutExercise(db: SQLiteDatabase, workoutExerciseId: number) {
@@ -869,7 +882,12 @@ export async function discardWorkout(db: SQLiteDatabase, workoutId: number) {
 }
 
 export async function deleteWorkout(db: SQLiteDatabase, workoutId: number) {
-  await db.runAsync('DELETE FROM workouts WHERE id = ?', workoutId);
+  await db.withTransactionAsync(async () => {
+    // silinen antrenmandaki rekorlar sonraki antrenmanların rozetlerini etkilediği için egzersizlerin PR'ları yeniden hesaplanır
+    const affected = await db.getAllAsync<{ exercise_id: number }>('SELECT DISTINCT exercise_id FROM workout_exercises WHERE workout_id = ?', workoutId);
+    await db.runAsync('DELETE FROM workouts WHERE id = ?', workoutId);
+    for (const a of affected) await recomputePrFlags(db, a.exercise_id);
+  });
 }
 
 export async function renameWorkout(db: SQLiteDatabase, workoutId: number, name: string) {
@@ -925,13 +943,16 @@ export async function recomputePrFlags(db: SQLiteDatabase, exerciseId: number) {
  * Düzenleme bitince: ağırlığı ve tekrarı boş tamamlanmış setleri (ör. yeni eklenen egzersizin boş seti) siler,
  * setsiz kalan egzersizleri çıkarır, etkilenen egzersizlerin PR'larını yeniden hesaplar, başlık/notu kaydeder.
  */
-export async function finalizeHistoryEdit(db: SQLiteDatabase, workoutId: number, meta?: { name: string; note: string | null }) {
+export async function finalizeHistoryEdit(
+  db: SQLiteDatabase,
+  workoutId: number,
+  meta?: { name: string; note: string | null },
+  opts: { dropIfEmpty?: boolean } = {},
+): Promise<{ deleted: boolean }> {
+  let deleted = false;
   await db.withTransactionAsync(async () => {
-    const affected = await db.getAllAsync<{ exercise_id: number }>(
-      `SELECT DISTINCT we.exercise_id FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id
-       WHERE we.workout_id = ? AND s.done = 1 AND COALESCE(s.weight, 0) = 0 AND COALESCE(s.reps, 0) = 0 AND COALESCE(s.duration_sec, 0) = 0 AND COALESCE(s.distance_m, 0) = 0`,
-      workoutId,
-    );
+    // Bu antrenmanın TÜM egzersizleri (temizlikte çıkarılacaklar dahil): geçmişe eklenen set sonraki antrenmanların rekorlarını etkiler
+    const affected = await db.getAllAsync<{ exercise_id: number }>('SELECT DISTINCT exercise_id FROM workout_exercises WHERE workout_id = ?', workoutId);
     await db.runAsync(
       `DELETE FROM sets WHERE done = 1 AND COALESCE(weight, 0) = 0 AND COALESCE(reps, 0) = 0
          AND COALESCE(duration_sec, 0) = 0 AND COALESCE(distance_m, 0) = 0
@@ -943,8 +964,64 @@ export async function finalizeHistoryEdit(db: SQLiteDatabase, workoutId: number,
       workoutId,
     );
     for (const a of affected) await recomputePrFlags(db, a.exercise_id);
+    const left = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM workout_exercises WHERE workout_id = ?', workoutId);
+    if (opts.dropIfEmpty && (left?.n ?? 0) === 0) {
+      await db.runAsync('DELETE FROM workouts WHERE id = ?', workoutId);
+      deleted = true;
+      return;
+    }
     if (meta) await updateWorkoutMeta(db, workoutId, meta);
   });
+  return { deleted };
+}
+
+/**
+ * Geçmişe antrenman ekler (finished_at dolu). Gelecek zaman reddedilir; bitiş şimdiden ileri olamaz (süre kısaltılır).
+ * Rutin verilirse egzersizler rutinin set sayısıyla BOŞ ve tamamlanmış gelir; boş kalanlar `finalizeHistoryEdit` ile temizlenir.
+ */
+export async function createHistoryWorkout(
+  db: SQLiteDatabase,
+  opts: { routineId: number | null; startedAt: number; durationMin: number; now?: number },
+): Promise<number> {
+  const now = opts.now ?? Date.now();
+  if (!Number.isFinite(opts.startedAt) || opts.startedAt > now) throw new Error('future-date');
+  const finishedAt = Math.min(opts.startedAt + Math.max(1, Math.round(opts.durationMin)) * 60000, Math.max(now, opts.startedAt));
+  let workoutId = 0;
+  await db.withTransactionAsync(async () => {
+    let name = 'Serbest Antrenman';
+    let items: RoutineItem[] = [];
+    if (opts.routineId != null) {
+      const r = await getRoutine(db, opts.routineId);
+      if (r) {
+        name = r.name;
+        items = r.items;
+      }
+    }
+    const res = await db.runAsync(
+      'INSERT INTO workouts (name, routine_id, started_at, finished_at) VALUES (?, ?, ?, ?)',
+      name,
+      opts.routineId,
+      opts.startedAt,
+      finishedAt,
+    );
+    workoutId = res.lastInsertRowId;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const we = await db.runAsync(
+        'INSERT INTO workout_exercises (workout_id, exercise_id, position, rep_min, rep_max, rest_seconds) VALUES (?, ?, ?, ?, ?, ?)',
+        workoutId,
+        it.exercise_id,
+        i,
+        it.rep_min,
+        it.rep_max,
+        it.rest_seconds ?? null,
+      );
+      for (let s = 0; s < it.target_sets; s++) {
+        await db.runAsync('INSERT INTO sets (workout_exercise_id, position, done, completed_at) VALUES (?, ?, 1, ?)', we.lastInsertRowId, s, finishedAt);
+      }
+    }
+  });
+  return workoutId;
 }
 
 async function exerciseIdOfSet(db: SQLiteDatabase, setId: number) {
@@ -1269,25 +1346,28 @@ export async function deleteAllData(db: SQLiteDatabase) {
 
 // ───────────────────────── AI egzersiz rehberi önbelleği ─────────────────────────
 
-export type GuideRow = { exercise_id: number; json: string; created_at: number; model: string | null };
+export type GuideRow = { exercise_id: number; lang: string; json: string; created_at: number; model: string | null };
 
-export async function getGuideRow(db: SQLiteDatabase, exerciseId: number) {
-  return db.getFirstAsync<GuideRow>('SELECT * FROM exercise_guides WHERE exercise_id = ?', exerciseId);
+/** Rehber önbelleği dile göre ayrıdır (varsayılan 'tr'). */
+export async function getGuideRow(db: SQLiteDatabase, exerciseId: number, lang = 'tr') {
+  return db.getFirstAsync<GuideRow>('SELECT * FROM exercise_guides WHERE exercise_id = ? AND lang = ?', exerciseId, lang);
 }
 
-export async function saveGuide(db: SQLiteDatabase, exerciseId: number, json: string, model: string | null, now = Date.now()) {
+export async function saveGuide(db: SQLiteDatabase, exerciseId: number, json: string, model: string | null, now = Date.now(), lang = 'tr') {
   await db.runAsync(
-    `INSERT INTO exercise_guides (exercise_id, json, created_at, model) VALUES (?, ?, ?, ?)
-     ON CONFLICT(exercise_id) DO UPDATE SET json = excluded.json, created_at = excluded.created_at, model = excluded.model`,
+    `INSERT INTO exercise_guides (exercise_id, lang, json, created_at, model) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(exercise_id, lang) DO UPDATE SET json = excluded.json, created_at = excluded.created_at, model = excluded.model`,
     exerciseId,
+    lang,
     json,
     now,
     model,
   );
 }
 
-export async function deleteGuide(db: SQLiteDatabase, exerciseId: number) {
-  await db.runAsync('DELETE FROM exercise_guides WHERE exercise_id = ?', exerciseId);
+export async function deleteGuide(db: SQLiteDatabase, exerciseId: number, lang?: string) {
+  if (lang) await db.runAsync('DELETE FROM exercise_guides WHERE exercise_id = ? AND lang = ?', exerciseId, lang);
+  else await db.runAsync('DELETE FROM exercise_guides WHERE exercise_id = ?', exerciseId);
 }
 
 // ───────────────────────── Dinlenme analizi ─────────────────────────

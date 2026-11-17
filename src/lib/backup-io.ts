@@ -1,3 +1,4 @@
+import { t } from '@/i18n';
 import { File, Paths } from 'expo-file-system';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
@@ -12,8 +13,8 @@ export async function shareBackup(db: SQLiteDatabase) {
   if (file.exists) file.delete();
   file.create();
   await file.write(JSON.stringify(backup));
-  if (!(await Sharing.isAvailableAsync())) throw new BackupError('Bu cihazda paylaşım kullanılamıyor.');
-  await Sharing.shareAsync(file.uri, { mimeType: 'application/json', UTI: 'public.json', dialogTitle: 'gymcime yedeği' });
+  if (!(await Sharing.isAvailableAsync())) throw new BackupError(t('backup.noShare'));
+  await Sharing.shareAsync(file.uri, { mimeType: 'application/json', UTI: 'public.json', dialogTitle: t('backup.shareTitle') });
 }
 
 /** Belge seçiciyle yedek seçtirir ve doğrular. İptal edilirse `null`. */

@@ -20,6 +20,8 @@ import { formatRest, REST_PRESETS } from '@/lib/rest';
 import { beginWorkout } from '@/lib/start-workout';
 import { leave } from '@/lib/nav';
 import { syncReminders } from '@/lib/reminder-io';
+import { useT } from '@/components/language-provider';
+import { muscleLabel, equipmentLabel } from '@/i18n/labels';
 
 /** Düzenleme sırasındaki kalem: kararlı bir anahtar (sürükle-bırak ve değiştirme için). */
 type Draft = RoutineItem & { uid: string };
@@ -29,6 +31,7 @@ const serialize = (name: string, items: RoutineItem[]) =>
   JSON.stringify([name.trim(), items.map((i) => [i.exercise_id, i.target_sets, i.rep_min, i.rep_max, i.rest_seconds ?? null])]);
 
 export default function RoutineEditor() {
+  const _ = useT();
   const t = useTheme();
   const db = useSQLiteContext();
   const sheet = useSheet();
@@ -131,7 +134,7 @@ export default function RoutineEditor() {
   const save = async () => {
     if (!name.trim()) {
       haptic.warning();
-      sheet.actions({ title: 'Rutine bir isim ver', message: 'Örneğin "Push Günü" veya "Bacak".', actions: [] , cancelLabel: 'Tamam' });
+      sheet.actions({ title: _('routine.name_your_routine'), message: _('routine.for_example_push_day_or'), actions: [] , cancelLabel: _('common.ok') });
       return;
     }
     await saveRoutine(db, isNew ? null : Number(id), name.trim(), items);
@@ -148,12 +151,12 @@ export default function RoutineEditor() {
       return;
     }
     sheet.actions({
-      title: 'Kaydedilmemiş değişiklikler',
-      message: 'Çıkarsan yaptığın değişiklikler kaybolur.',
-      cancelLabel: 'Düzenlemeye devam et',
+      title: _('routine.unsaved_changes'),
+      message: _('routine.if_you_leave_your_changes'),
+      cancelLabel: _('routine.keep_editing'),
       actions: [
-        { label: 'Kaydet', icon: 'check', style: 'primary', onPress: save },
-        { label: 'Vazgeç, kaydetme', icon: 'close', style: 'destructive', onPress: leave },
+        { label: _('common.save'), icon: 'check', style: 'primary', onPress: save },
+        { label: _('routine.discard_changes'), icon: 'close', style: 'destructive', onPress: leave },
       ],
     });
   };
@@ -173,11 +176,11 @@ export default function RoutineEditor() {
 
   const remove = () =>
     sheet.actions({
-      title: 'Rutini sil?',
-      message: 'Geçmiş antrenmanların silinmez.',
+      title: _('routine.delete_routine'),
+      message: _('routine.your_past_workouts_are_kept'),
       actions: [
         {
-          label: 'Rutini sil',
+          label: _('common.delete_routine'),
           icon: 'trash',
           style: 'destructive',
           onPress: async () => {
@@ -193,7 +196,7 @@ export default function RoutineEditor() {
     const it = items[idx];
     const def = it.default_rest ?? profileRest;
     sheet.custom({
-      title: `${it.name} · dinlenme`,
+      title: _('common.rest', { name: it.name }),
       render: (close) => (
         <View style={{ gap: Spacing.md }}>
           <View style={styles.presetGrid}>
@@ -215,7 +218,7 @@ export default function RoutineEditor() {
             })}
           </View>
           <Button
-            title={`Varsayılanı kullan (${formatRest(def)})`}
+            title={_('routine.use_default', { v: formatRest(def) })}
             kind="secondary"
             onPress={() => {
               update(idx, { rest_seconds: null });
@@ -233,14 +236,12 @@ export default function RoutineEditor() {
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Stack.Screen
         options={{
-          title: isNew ? 'Yeni Rutin' : 'Rutini Düzenle',
+          title: isNew ? _('routine.new_routine') : _('routine.edit_routine'),
           gestureEnabled: !dirty,
           headerLeft: () => <HeaderBack onPress={guardedLeave} />,
           headerRight: () => (
-            <PressableScale onPress={save} hitSlop={10} accessibilityRole="button" accessibilityLabel="Rutini kaydet">
-              <T variant="heading" color={t.primary}>
-                Kaydet
-              </T>
+            <PressableScale onPress={save} hitSlop={10} accessibilityRole="button" accessibilityLabel={_('routine.save_routine')}>
+              <T variant="heading" color={t.primary}>{_('common.save')}</T>
             </PressableScale>
           ),
         }}
@@ -263,13 +264,12 @@ export default function RoutineEditor() {
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="Rutin adı (ör. Sırt günü, Göğüs + Triceps)"
+          placeholder={_('routine.routine_name_e_g_back')}
           placeholderTextColor={t.textMuted}
           style={[styles.nameInput, { color: t.text }]}
         />
         <T variant="caption" muted style={{ marginBottom: Spacing.sm }}>
-          {items.length} egzersiz · {items.reduce((a, i) => a + i.target_sets, 0)} set
-          {items.length > 1 ? ' · ≡ tutamacına basılı tutup sürükleyerek sırala' : ''}
+          {_('routine.exercises_sets', { count: items.length, v: items.reduce((a, i) => a + i.target_sets, 0), v2: items.length > 1 ? _('routine.hold_the_handle_and_drag') : '' })}
         </T>
 
         <DragList
@@ -294,14 +294,15 @@ export default function RoutineEditor() {
                         {it.name}
                       </T>
                       <T variant="caption" secondary>
-                        {it.muscle} · {it.equipment}
+                        {muscleLabel(it.muscle)} · {equipmentLabel(it.equipment)}
                       </T>
                     </View>
                     <IconButton
                       icon="swap"
-                      label="Egzersizi başka bir egzersizle değiştir"
+                      label={_('routine.swap_this_exercise_for_another')}
                       onPress={() => {
                         replaceUid.current = it.uid;
+                        pickerStore.setExisting(items.map((i) => i.exercise_id));
                         router.push('/exercise-picker');
                       }}
                       bg="transparent"
@@ -311,23 +312,21 @@ export default function RoutineEditor() {
                     <IconButton icon="trash" onPress={() => setItems((p) => p.filter((_, i) => i !== idx))} bg="transparent" color={t.danger} size={15} />
                   </View>
                   <View style={styles.steppers}>
-                    <Stepper label="Set" value={it.target_sets} min={1} max={10} onChange={(v) => update(idx, { target_sets: v })} />
+                    <Stepper label={_('common.sets')} value={it.target_sets} min={1} max={10} onChange={(v) => update(idx, { target_sets: v })} />
                     {!timeBased && (
                       <>
-                        <Stepper label="Min tekrar" value={it.rep_min} min={1} max={it.rep_max} onChange={(v) => update(idx, { rep_min: v })} />
-                        <Stepper label="Max tekrar" value={it.rep_max} min={it.rep_min} max={50} onChange={(v) => update(idx, { rep_max: v })} />
+                        <Stepper label={_('routine.min_reps')} value={it.rep_min} min={1} max={it.rep_max} onChange={(v) => update(idx, { rep_min: v })} />
+                        <Stepper label={_('routine.max_reps')} value={it.rep_max} min={it.rep_min} max={50} onChange={(v) => update(idx, { rep_max: v })} />
                       </>
                     )}
                   </View>
                   {it.kind !== 'cardio' && (
                     <PressableScale onPress={() => pickRest(idx)} style={[styles.restRow, { backgroundColor: t.surfaceRaised }]}>
                       <Icon name="timer" size={14} color={t.primary} />
-                      <T variant="label" style={{ flex: 1 }}>
-                        Setler arası dinlenme
-                      </T>
+                      <T variant="label" style={{ flex: 1 }}>{_('routine.rest_between_sets')}</T>
                       <T variant="label" color={t.primary} style={{ fontFamily: Font.bold }}>
                         {formatRest(rest)}
-                        {it.rest_seconds == null ? ' · varsayılan' : ''}
+                        {it.rest_seconds == null ? _('routine.default') : ''}
                       </T>
                       <Icon name="chevronRight" size={12} color={t.textMuted} />
                     </PressableScale>
@@ -338,11 +337,11 @@ export default function RoutineEditor() {
           }}
         />
 
-        <Button title="Egzersiz ekle" icon="addCircle" kind="secondary" onPress={() => router.push('/exercise-picker')} style={{ marginTop: Spacing.lg }} />
+        <Button title={_('common.add_exercise')} icon="addCircle" kind="secondary" onPress={() => { pickerStore.setExisting(items.map((i) => i.exercise_id)); router.push('/exercise-picker'); }} style={{ marginTop: Spacing.lg }} />
         {!isNew && (
           <>
             <Button
-              title="Bu rutinle başla"
+              title={_('routine.start_with_this_routine')}
               icon="play"
               onPress={async () => {
                 await saveRoutine(db, Number(id), name.trim() || 'Rutin', items);
@@ -351,7 +350,7 @@ export default function RoutineEditor() {
               }}
               style={{ marginTop: Spacing.sm }}
             />
-            <Button title="Rutini sil" kind="danger" icon="trash" onPress={remove} style={{ marginTop: Spacing.xl }} />
+            <Button title={_('common.delete_routine')} kind="danger" icon="trash" onPress={remove} style={{ marginTop: Spacing.xl }} />
           </>
         )}
       </Animated.ScrollView>

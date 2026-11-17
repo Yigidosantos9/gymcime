@@ -4,6 +4,8 @@ import { Platform } from 'react-native';
 
 import { getSetting, getWeekPlan, setSetting } from '@/db/queries';
 
+import { loadLanguage } from './language-io';
+
 import { anyReminderOn, buildReminderSchedule, parseReminders, REMINDER_ID_PREFIX, type ReminderSettings } from './reminders';
 
 const KEY = 'reminders';
@@ -51,7 +53,9 @@ async function doSync(db: SQLiteDatabase) {
   }
   if (!anyReminderOn(settings) || !(await ensureReminderPermission(false))) return;
   const plan = await getWeekPlan(db);
-  for (const p of buildReminderSchedule(settings, plan)) {
+  // bildirim metni kayıtlı dile göre (ekran dışı çağrılarda da doğru dil)
+  const lang = await loadLanguage(db);
+  for (const p of buildReminderSchedule(settings, plan, lang)) {
     await Notifications.scheduleNotificationAsync({
       identifier: p.id,
       content: { title: p.title, body: p.body, sound: false },

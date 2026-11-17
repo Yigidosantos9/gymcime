@@ -1,3 +1,4 @@
+import { formatDecimal, t, type MsgKey } from '@/i18n';
 /**
  * Ağırlık önerisi v3 — kural tabanlı, deterministik, telefonda anlık çalışır.
  *
@@ -42,19 +43,23 @@ export type Suggestion = {
 export const DEFAULT_INCREMENTS: Increments = { barbell: 2.5, dumbbell: 2, machine: 2.5 };
 
 /** Setin zorluk seçenekleri → RIR */
-export const EFFORT: { key: number; label: string; hint: string }[] = [
-  { key: 4, label: 'Kolay', hint: '4+ tekrar daha yapabilirdim' },
-  { key: 2, label: 'İyi', hint: '2-3 tekrar yedekte' },
-  { key: 1, label: 'Zor', hint: '1 tekrar daha zor çıkardı' },
-  { key: 0, label: 'Tükendim', hint: 'Bir tekrar daha çıkmazdı' },
-];
+const effortOption = (key: number) => ({
+  key,
+  get label() {
+    return t(`effort.${key}` as MsgKey);
+  },
+  get hint() {
+    return t(`effort.${key}.hint` as MsgKey);
+  },
+});
+export const EFFORT: { key: number; label: string; hint: string }[] = [4, 2, 1, 0].map(effortOption);
 
 export function effortLabel(rir: number | null | undefined) {
   if (rir == null) return null;
-  if (rir >= 3) return 'Kolay';
-  if (rir === 2) return 'İyi';
-  if (rir === 1) return 'Zor';
-  return 'Tükendim';
+  if (rir >= 3) return t('effort.easy');
+  if (rir === 2) return t('effort.good');
+  if (rir === 1) return t('effort.hard');
+  return t('effort.fail');
 }
 
 /** Epley formülü ile tahmini 1RM. */
@@ -158,7 +163,20 @@ export function warmupsFor(weight: number | null, equipment: string, step: numbe
 
 export type Effort = 'easy' | 'good' | 'hard' | 'fail';
 
-export const EFFORT_NAME: Record<Effort, string> = { easy: 'Kolay', good: 'İyi', hard: 'Zor', fail: 'Tükendim' };
+export const EFFORT_NAME: Record<Effort, string> = {
+  get easy() {
+    return t('effort.easy');
+  },
+  get good() {
+    return t('effort.good');
+  },
+  get hard() {
+    return t('effort.hard');
+  },
+  get fail() {
+    return t('effort.fail');
+  },
+};
 
 /** Kolay = RIR ≥3, İyi = 2, Zor = 1, Tükendim = 0. */
 export function effortFromRir(rir: number): Effort {
@@ -176,15 +194,22 @@ export function inferEffort(reps: number, targetReps: number): Effort {
 }
 
 /** Kural tablosu (UI'daki "?" sheet'i ve testler aynı kaynağı kullanır). */
-export const RULE_TABLE: { effort: Effort; meaning: string; inSession: string; nextWorkout: string }[] = [
-  { effort: 'easy', meaning: '3+ tekrar yedekte', inSession: 'Sonraki set +1 adım', nextWorkout: '+2 adım' },
-  { effort: 'good', meaning: '2 tekrar yedekte', inSession: 'Plana devam', nextWorkout: '+1 adım' },
-  { effort: 'hard', meaning: '1 tekrar yedekte', inSession: 'Aynı ağırlık (piramit artışı iptal)', nextWorkout: 'Aynı ağırlık, +1 tekrar (üst sınırdaysa +1 adım)' },
-  { effort: 'fail', meaning: 'Tükendim', inSession: 'Sonraki set −1 adım', nextWorkout: 'Aynı ağırlık (hedefin 2+ altındaysa −1 adım). Vücut ağırlığında asla gerileme yok' },
-];
+const ruleRow = (effort: Effort) => ({
+  effort,
+  get meaning() {
+    return t(`effort.meaning.${effort}` as MsgKey);
+  },
+  get inSession() {
+    return t(`effort.inSession.${effort}` as MsgKey);
+  },
+  get nextWorkout() {
+    return t(`effort.next.${effort}` as MsgKey);
+  },
+});
+export const RULE_TABLE: { effort: Effort; meaning: string; inSession: string; nextWorkout: string }[] = (['easy', 'good', 'hard', 'fail'] as Effort[]).map(ruleRow);
 
-const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1).replace(/\.0$/, '')).replace('.', ',');
-const stepsText = (n: number) => `${n > 0 ? '+' : '−'}${Math.abs(n)} adım`;
+const fmt = (n: number) => formatDecimal(n, 1);
+const stepsText = (n: number) => t('prog.stepFn', { sign: n > 0 ? '+' : '−', count: Math.abs(n) });
 
 /** Bir setin zorluğu: açık RIR > tükeniş seti > RPE > tekrardan çıkarım. */
 function effortOfSet(s: DoneSet, targetReps: number): { effort: Effort; inferred: boolean } {
@@ -232,7 +257,7 @@ export function suggestNext(
       weight: null,
       reps: repMin,
       kind: 'start',
-      reason: `İlk sefer: ${repMin}-${repMax} tekrarı ${targetRir} tekrar yedekte bırakarak yapabileceğin bir ağırlık seç`,
+      reason: t('prog.start', { min: repMin, max: repMax, rir: targetRir }),
     };
   }
 
@@ -260,22 +285,21 @@ export function suggestNext(
 
   const daysOff = (now - last.started_at) / 86400000;
   const { effort, inferred } = effortOfSet(top, repMin);
-  const eff = `${EFFORT_NAME[effort]}${inferred ? ' (tahmini)' : ''}`;
-  const lead = `Son sefer en ağır set ${eff} geçti`;
+  const eff = inferred ? t('effort.inferred', { name: EFFORT_NAME[effort] }) : EFFORT_NAME[effort];
+  const lead = t('prog.lead', { eff });
 
   // ── Vücut ağırlığı / ekipmansız: tekrarla ilerle (Kolay +2 · İyi +1 · Zor aynı · Tükendim −1)
   if (step === 0 || topWeight === 0) {
     const bw = (reps: number, kind: SuggestKind, reason: string): Suggestion => ({ ...base, weight: topWeight || null, reps, kind, reason });
     if (daysOff > 14) {
       const r = Math.max(1, Math.round(topReps * 0.85));
-      return bw(r, 'return', `${Math.round(daysOff)} gündür yapmadın → ${r} tekrarla yeniden başla`);
+      return bw(r, 'return', t('prog.bw.return', { days: Math.round(daysOff), reps: r }));
     }
     // Tükendim: yalnızca açıkça seçildiyse ve sonuç hedefin (alt sınır) altına düşmüyorsa −1; çıkarımla ise gerileme yok
     const delta = effort === 'fail' ? (!inferred && topReps - 1 >= repMin ? -1 : 0) : { easy: 2, good: 1, hard: 0 }[effort];
     const r = Math.max(1, topReps + delta);
     const kind: SuggestKind = delta > 0 ? 'increase' : delta < 0 ? 'decrease' : 'hold';
-    const what = delta > 0 ? `+${delta} tekrar` : delta < 0 ? '−1 tekrar' : 'aynı tekrar';
-    return bw(r, kind, `${lead} → ${what} (${r})`);
+    return bw(r, kind, delta > 0 ? t('prog.bw.up', { lead, delta, reps: r }) : delta < 0 ? t('prog.bw.down', { lead, reps: r }) : t('prog.bw.same', { lead, reps: r }));
   }
 
   const finish = (weight: number, reps: number, kind: SuggestKind, reason: string): Suggestion => {
@@ -290,7 +314,7 @@ export function suggestNext(
       floorTo(topWeight * factor, step),
       repMin,
       'return',
-      `${Math.round(daysOff)} gündür yapmadın → %${Math.round((1 - factor) * 100)} hafif başla, formu oturt`,
+      t('prog.return', { days: Math.round(daysOff), pct: Math.round((1 - factor) * 100) }),
     );
   }
 
@@ -299,7 +323,7 @@ export function suggestNext(
   const repsAfterIncrease = topReps >= repMax ? repMin : clampReps(topReps);
   const up = (steps: number): Suggestion => {
     const w = topWeight + steps * step;
-    return finish(w, repsAfterIncrease, 'increase', `${lead} → ${stepsText(steps)} (${fmt(w)} kg)`);
+    return finish(w, repsAfterIncrease, 'increase', t('prog.up', { lead, steps: stepsText(steps), w: fmt(w) }));
   };
 
   switch (effort) {
@@ -307,17 +331,17 @@ export function suggestNext(
       return up(2);
     case 'good':
       // Hedef tutturulmadıysa (zorluk girilmiş ama tekrar alt sınırın altında) önce tekrarı yakala
-      if (topReps < repMin) return finish(topWeight, topReps + 1, 'hold', `${lead} ama tekrar hedefinin (${repMin}) altında → aynı ağırlık, ${topReps + 1} tekrar`);
+      if (topReps < repMin) return finish(topWeight, topReps + 1, 'hold', t('prog.goodBelow', { lead, min: repMin, reps: topReps + 1 }));
       return up(1);
     case 'hard':
       if (topReps >= repMax) return up(1);
-      return finish(topWeight, topReps + 1, 'hold', `${lead} → aynı ağırlık, +1 tekrar (${fmt(topWeight)} kg × ${topReps + 1})`);
+      return finish(topWeight, topReps + 1, 'hold', t('prog.hardHold', { lead, w: fmt(topWeight), reps: topReps + 1 }));
     case 'fail':
       if (topReps <= repMin - 2) {
         const w = topWeight - step;
-        return finish(w, repMin, 'decrease', `${lead}, tekrar hedefinin (${repMin}) 2+ altında → −1 adım (${fmt(Math.max(step, w))} kg)`);
+        return finish(w, repMin, 'decrease', t('prog.failDown', { lead, min: repMin, w: fmt(Math.max(step, w)) }));
       }
-      return finish(topWeight, clampReps(topReps), 'hold', `${lead} → aynı ağırlık (${fmt(topWeight)} kg × ${clampReps(topReps)})`);
+      return finish(topWeight, clampReps(topReps), 'hold', t('prog.failHold', { lead, w: fmt(topWeight), reps: clampReps(topReps) }));
   }
 }
 
@@ -337,7 +361,7 @@ export function adjustBodyweight(
     1,
     effort === 'easy' ? plannedReps + 1 : effort === 'good' ? plannedReps : effort === 'hard' || inferred ? Math.min(plannedReps, reps) : Math.min(plannedReps, reps) - 1,
   );
-  return { reps: r, note: r === plannedReps ? null : `${EFFORT_NAME[effort]}${inferred ? ' (tahmini)' : ''} → sonraki set ${r} tekrar` };
+  return { reps: r, note: r === plannedReps ? null : t('prog.bwNote', { eff: inferred ? t('effort.inferred', { name: EFFORT_NAME[effort] }) : EFFORT_NAME[effort], reps: r }) };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -453,9 +477,9 @@ export function replanAfter(
   }
   const changed = nextWeight !== nextSet.weight;
   const why =
-    effort === 'easy' ? '+1 adım' : effort === 'good' ? 'plana devam' : effort === 'hard' ? (rise > 0 ? 'piramit artışı iptal' : 'aynı ağırlık') : '−1 adım';
+    effort === 'easy' ? t('prog.why.easy') : effort === 'good' ? t('prog.why.good') : effort === 'hard' ? (rise > 0 ? t('prog.why.hardCancel') : t('prog.why.hardSame')) : t('prog.why.fail');
   return {
     plan: next,
-    note: changed ? `${EFFORT_NAME[effort]}${inferred ? ' (tahmini)' : ''} → Set ${doneIndex + 2}: ${fmt(nextWeight)} kg × ${nextSet.reps} (${why})` : null,
+    note: changed ? t('prog.adjust', { eff: inferred ? t('effort.inferred', { name: EFFORT_NAME[effort] }) : EFFORT_NAME[effort], n: doneIndex + 2, w: fmt(nextWeight), reps: nextSet.reps, why }) : null,
   };
 }

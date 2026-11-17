@@ -7,9 +7,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MuscleIcon } from '@/components/body-map';
 import { CreateExerciseForm } from '@/components/create-exercise';
 import { Icon } from '@/components/icon';
-import { Button, Chip, IconButton, PressableScale, T } from '@/components/ui';
+import { Badge, Button, Chip, IconButton, PressableScale, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
-import { addExercisesToWorkout, addHistoryExercise, listExercises } from '@/db/queries';
+import { addExercisesToWorkout, addHistoryExercise, getWorkoutExerciseIds, listExercises } from '@/db/queries';
+import { useSheet } from '@/components/sheet';
 import { MUSCLES } from '@/db/seed';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
@@ -18,9 +19,13 @@ import { haptic } from '@/lib/haptics';
 import { pickerStore } from '@/lib/picker-store';
 import { formatRest } from '@/lib/rest';
 import { leave } from '@/lib/nav';
+import { useT } from '@/components/language-provider';
+import { equipmentLabel, muscleLabel } from '@/i18n/labels';
 
 export default function ExercisePicker() {
+  const _ = useT();
   const t = useTheme();
+  const sheet = useSheet();
   const insets = useSafeAreaInsets();
   const { workoutId, historyWorkoutId } = useLocalSearchParams<{ workoutId?: string; historyWorkoutId?: string }>();
   const { data: exercises, db, reload } = useDbQuery(listExercises);
@@ -28,14 +33,35 @@ export default function ExercisePicker() {
   const [muscle, setMuscle] = useState<string | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [creating, setCreating] = useState(false);
+  const contextWorkoutId = historyWorkoutId ?? workoutId;
+  // Bağlamda (rutin / aktif antrenman / geçmiş antrenman) zaten olan egzersizler: etiket + yine de ekle uyarısı
+  const { data: existingIds } = useDbQuery(
+    async (db) => (contextWorkoutId ? getWorkoutExerciseIds(db, Number(contextWorkoutId)) : pickerStore.getExisting()),
+    [contextWorkoutId],
+  );
+  const existing = useMemo(() => new Set(existingIds ?? []), [existingIds]);
+  const existingLabel = _(contextWorkoutId ? 'exercisePicker.in_workout' : 'exercisePicker.in_routine');
 
   const filtered = useMemo(() => {
     return filterExercises(exercises ?? [], { q, muscle });
   }, [exercises, q, muscle]);
 
-  const toggle = (id: number) => {
-    haptic.tap();
-    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const toggle = (id: number, name: string) => {
+    const add = () => {
+      haptic.tap();
+      setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+    };
+    // Engelleme yok, uyarı var: zaten olan bir hareket yeni seçiliyorsa onay iste
+    if (existing.has(id) && !selected.includes(id)) {
+      sheet.actions({
+        title: _('exercisePicker.is_already_there', { name: name }),
+        message: _(contextWorkoutId ? 'exercisePicker.dup_workout' : 'exercisePicker.dup_routine'),
+        cancelLabel: _('common.cancel'),
+        actions: [{ label: _('exercisePicker.add_anyway'), icon: 'addCircle', onPress: add }],
+      });
+      return;
+    }
+    add();
   };
 
   const confirm = async () => {
@@ -60,9 +86,7 @@ export default function ExercisePicker() {
     <View style={{ flex: 1, backgroundColor: t.surface }}>
       <View style={{ paddingHorizontal: Spacing.lg, paddingTop: Spacing.xl, gap: Spacing.md }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <T variant="title" style={{ flex: 1 }}>
-            Egzersiz ekle
-          </T>
+          <T variant="title" style={{ flex: 1 }}>{_('common.add_exercise')}</T>
           <IconButton icon="close" onPress={leave} color={t.textSecondary} />
         </View>
         <View style={[styles.search, { backgroundColor: t.surfaceRaised, borderColor: t.border }]}>
@@ -70,7 +94,7 @@ export default function ExercisePicker() {
           <TextInput
             value={q}
             onChangeText={setQ}
-            placeholder="Ara: bench, squat, curl…"
+            placeholder={_('exercisePicker.search_bench_squat_curl')}
             placeholderTextColor={t.textMuted}
             style={{ flex: 1, color: t.text, fontSize: 16, fontFamily: Font.medium }}
             autoCorrect={false}
@@ -88,9 +112,9 @@ export default function ExercisePicker() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={{ gap: 8, paddingHorizontal: Spacing.lg }}
           style={{ marginHorizontal: -Spacing.lg, flexGrow: 0 }}>
-          <Chip label="Tümü" active={!muscle} onPress={() => setMuscle(null)} />
+          <Chip label={_('exercisePicker.all')} active={!muscle} onPress={() => setMuscle(null)} />
           {MUSCLES.map((m) => (
-            <Chip key={m} label={m} active={muscle === m} onPress={() => setMuscle(muscle === m ? null : m)} />
+            <Chip key={m} label={muscleLabel(m)} active={muscle === m} onPress={() => setMuscle(muscle === m ? null : m)} />
           ))}
         </ScrollView>
       </View>
@@ -104,15 +128,15 @@ export default function ExercisePicker() {
         contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 130 + insets.bottom }}
         ListEmptyComponent={
           <View style={{ alignItems: 'center', gap: Spacing.md, paddingVertical: Spacing.xl }}>
-            <T secondary>“{q}” bulunamadı.</T>
+            <T secondary>{_('exercisePicker.not_found', { q: q })}</T>
             {q.trim().length > 1 && !creating && (
-              <Button title={`“${q.trim()}” oluştur`} icon="add" kind="secondary" onPress={() => setCreating(true)} />
+              <Button title={_('common.create', { v: q.trim() })} icon="add" kind="secondary" onPress={() => setCreating(true)} />
             )}
           </View>
         }
         ListFooterComponent={
           creating ? (
-            <CreateExerciseForm name={q} submitLabel="Oluştur ve seç" onCreated={onCreated} />
+            <CreateExerciseForm name={q} submitLabel={_('exercisePicker.create_and_select')} onCreated={onCreated} />
           ) : undefined
         }
         renderItem={({ item }) => {
@@ -120,23 +144,26 @@ export default function ExercisePicker() {
           const order = selected.indexOf(item.id) + 1;
           return (
             <PressableScale
-              onPress={() => toggle(item.id)}
+              onPress={() => toggle(item.id, item.name)}
               hapticOnPress={false}
               scaleTo={0.98}
               style={[styles.row, { backgroundColor: on ? t.primarySoft : 'transparent', borderColor: on ? t.primary : 'transparent' }]}>
               <MuscleIcon muscle={item.muscle} size={44} />
               <View style={{ flex: 1, gap: 2 }}>
-                <T variant="heading" style={{ fontSize: 15 }}>
-                  {item.name}
-                </T>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <T variant="heading" style={{ fontSize: 15, flexShrink: 1 }}>
+                    {item.name}
+                  </T>
+                  {existing.has(item.id) && <Badge label={existingLabel} tint={t.gold} bg={t.goldSoft} />}
+                </View>
                 <T variant="caption" secondary>
-                  {item.muscle} · {item.equipment}
-                  {item.kind === 'cardio' ? ' · süre + mesafe' : item.kind === 'timed' ? ' · süreli' : ''}
-                  {item.rest_seconds ? ` · ${formatRest(item.rest_seconds)} mola` : ''}
+                  {muscleLabel(item.muscle)} · {equipmentLabel(item.equipment)}
+                  {item.kind === 'cardio' ? _('exercisePicker.time_distance') : item.kind === 'timed' ? _('common.timed') : ''}
+                  {item.rest_seconds ? _('exercisePicker.rest', { v: formatRest(item.rest_seconds) }) : ''}
                   {item.use_count > 0 ? ` · ${item.use_count}×` : ''}
                 </T>
               </View>
-              <IconButton icon="info" label={`${item.name} bilgisi`} onPress={() => router.push(`/exercise/${item.id}`)} bg="transparent" color={t.textSecondary} size={20} />
+              <IconButton icon="info" label={_('exercisePicker.info', { name: item.name })} onPress={() => router.push(`/exercise/${item.id}`)} bg="transparent" color={t.textSecondary} size={20} />
               <View style={[styles.check, { backgroundColor: on ? t.primary : 'transparent', borderColor: on ? t.primary : t.borderStrong }]}>
                 {on && (
                   <T variant="label" color={t.onPrimary} style={{ fontFamily: Font.heavy }}>
@@ -151,7 +178,7 @@ export default function ExercisePicker() {
 
       {selected.length > 0 && (
         <Animated.View entering={FadeInDown.springify().damping(16)} style={[styles.bottom, { paddingBottom: insets.bottom + 12 }]}>
-          <Button title={`${selected.length} egzersiz ekle`} icon="addCircle" onPress={confirm} />
+          <Button title={_('exercisePicker.add_exercises', { count: selected.length })} icon="addCircle" onPress={confirm} />
         </Animated.View>
       )}
     </View>

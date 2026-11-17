@@ -1,3 +1,4 @@
+import { t, decimalSep } from '@/i18n';
 /** Plaka hesaplayıcı (saf). Tüm hesap 0,25 kg biriminde tam sayıyla yapılır (kayan nokta hatası yok). */
 
 export const DEFAULT_PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
@@ -35,11 +36,11 @@ export type PlateResult = {
  */
 export function calcPlates(target: number, bar: number, available: number[] = DEFAULT_PLATES): PlateResult {
   const plates = [...new Set(available)].filter((p) => p > 0).sort((a, b) => b - a);
-  if (!Number.isFinite(target) || target <= 0) return { perSide: [], achieved: bar, exact: false, warning: 'Bir ağırlık gir.' };
+  if (!Number.isFinite(target) || target <= 0) return { perSide: [], achieved: bar, exact: false, warning: t('plates.enter') };
   if (target < bar) {
-    return { perSide: [], achieved: bar, exact: false, warning: `Hedef bar ağırlığından (${fmt(bar)} kg) hafif; sadece bar.` };
+    return { perSide: [], achieved: bar, exact: false, warning: t('plates.barOnly', { bar: fmt(bar) }) };
   }
-  if (plates.length === 0) return { perSide: [], achieved: bar, exact: target === bar, warning: target === bar ? null : 'Ayarlarda hiç plaka seçili değil.' };
+  if (plates.length === 0) return { perSide: [], achieved: bar, exact: target === bar, warning: target === bar ? null : t('plates.noPlates') };
 
   const wanted = Math.round(((target - bar) / 2) * U); // bir taraf, birim
   const units = plates.map((p) => Math.round(p * U));
@@ -79,15 +80,15 @@ export function calcPlates(target: number, bar: number, available: number[] = DE
     perSide,
     achieved,
     exact,
-    warning: exact ? null : `${fmt(target)} kg bu plakalarla yapılamıyor; en yakın ${fmt(achieved)} kg.`,
+    warning: exact ? null : t('plates.inexact', { target: fmt(target), achieved: fmt(achieved) }),
   };
 }
 
 function fmt(n: number) {
-  return (Number.isInteger(n) ? String(n) : String(n).replace(/\.?0+$/, '')).replace('.', ',');
+  return (Number.isInteger(n) ? String(n) : String(n).replace(/\.?0+$/, '')).replace('.', decimalSep());
 }
 
 /** "20 + 10 + 2,5" biçiminde metin. */
 export function describePerSide(perSide: number[]) {
-  return perSide.length === 0 ? 'plaka yok' : perSide.map((p) => fmt(p)).join(' + ');
+  return perSide.length === 0 ? t('plates.none') : perSide.map((p) => fmt(p)).join(' + ');
 }

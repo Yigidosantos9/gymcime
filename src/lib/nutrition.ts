@@ -1,3 +1,5 @@
+import { formatDecimal, t as tt, type MsgKey } from '@/i18n';
+
 /**
  * Beslenme hesapları (saf mantık, birim testli). Tüm sonuçlar TAHMİNDİR.
  * BMI, vücut yağı (US Navy / Deurenberg), BMR (Mifflin-St Jeor), TDEE, kalori hedefi, makrolar, süre tahmini.
@@ -6,12 +8,23 @@
 export type Sex = 'male' | 'female';
 export type ActivityLevel = 'sedentary' | 'light' | 'moderate' | 'active' | 'veryActive';
 
+const activity = (key: ActivityLevel, factor: number) => ({
+  key,
+  factor,
+  get label() {
+    return tt(`activity.${key}` as MsgKey);
+  },
+  get text() {
+    return tt(`activity.${key}.text` as MsgKey);
+  },
+});
+
 export const ACTIVITY: { key: ActivityLevel; factor: number; label: string; text: string }[] = [
-  { key: 'sedentary', factor: 1.2, label: 'Hareketsiz', text: 'Masa başı, az hareket' },
-  { key: 'light', factor: 1.375, label: 'Hafif aktif', text: 'Haftada 1-3 gün antrenman' },
-  { key: 'moderate', factor: 1.55, label: 'Orta aktif', text: 'Haftada 3-5 gün antrenman' },
-  { key: 'active', factor: 1.725, label: 'Çok aktif', text: 'Haftada 6-7 gün antrenman' },
-  { key: 'veryActive', factor: 1.9, label: 'Aşırı aktif', text: 'Günde iki antrenman / ağır fiziksel iş' },
+  activity('sedentary', 1.2),
+  activity('light', 1.375),
+  activity('moderate', 1.55),
+  activity('active', 1.725),
+  activity('veryActive', 1.9),
 ];
 
 export const KCAL_PER_KG = 7700;
@@ -44,12 +57,12 @@ export function bmi(weightKg: number, heightCm: number): number {
 }
 
 export function bmiCategory(v: number): string {
-  if (v < 18.5) return 'Zayıf';
-  if (v < 25) return 'Normal';
-  if (v < 30) return 'Fazla kilolu';
-  if (v < 35) return 'Obez (1. derece)';
-  if (v < 40) return 'Obez (2. derece)';
-  return 'Obez (3. derece)';
+  if (v < 18.5) return tt('nutr.bmi.under');
+  if (v < 25) return tt('nutr.bmi.normal');
+  if (v < 30) return tt('nutr.bmi.over');
+  if (v < 35) return tt('nutr.bmi.obese1');
+  if (v < 40) return tt('nutr.bmi.obese2');
+  return tt('nutr.bmi.obese3');
 }
 
 // ───────────────────────── Vücut yağı ─────────────────────────
@@ -78,18 +91,18 @@ export function deurenbergBodyFat(i: BodyInput): number {
 /** Ölçüler varsa US Navy, yoksa Deurenberg. %3–60 aralığına sıkıştırılır. */
 export function estimateBodyFat(i: BodyInput): BodyFat {
   const navy = navyBodyFat(i);
-  if (navy != null) return { percent: round1(clamp(navy, 3, 60)), method: 'navy', methodLabel: 'US Navy formülü (çevre ölçülerinden)' };
-  return { percent: round1(clamp(deurenbergBodyFat(i), 3, 60)), method: 'bmi', methodLabel: 'BMI tabanlı tahmin (Deurenberg)' };
+  if (navy != null) return { percent: round1(clamp(navy, 3, 60)), method: 'navy', methodLabel: tt('nutr.bf.navy') };
+  return { percent: round1(clamp(deurenbergBodyFat(i), 3, 60)), method: 'bmi', methodLabel: tt('nutr.bf.bmi') };
 }
 
 /** ACE kategorileri. */
 export function bodyFatCategory(sex: Sex, pct: number): string {
   const lim = sex === 'male' ? [6, 14, 18, 25] : [14, 21, 25, 32];
-  if (pct < lim[0]) return 'Çok düşük';
-  if (pct < lim[1]) return 'Atletik';
-  if (pct < lim[2]) return 'Fit';
-  if (pct < lim[3]) return 'Kabul edilebilir';
-  return 'Yüksek';
+  if (pct < lim[0]) return tt('nutr.bfcat.veryLow');
+  if (pct < lim[1]) return tt('nutr.bfcat.athletic');
+  if (pct < lim[2]) return tt('nutr.bfcat.fit');
+  if (pct < lim[3]) return tt('nutr.bfcat.ok');
+  return tt('nutr.bfcat.high');
 }
 
 export function leanMassKg(weightKg: number, bfPercent: number) {
@@ -137,15 +150,15 @@ export function calorieTarget(i: BodyInput, level: ActivityLevel, weeklyRateKg: 
   const t = tdee(i, level);
   let reason: string | null = null;
   const capped = safeWeeklyRate(weeklyRateKg, i.weightKg);
-  if (Math.abs(capped - weeklyRateKg) > 1e-9) reason = `Haftalık hız vücut ağırlığının %1'ini (${round1(Math.abs(capped)).toString().replace('.', ',')} kg) aşamaz.`;
+  if (Math.abs(capped - weeklyRateKg) > 1e-9) reason = tt('nutr.reason.weeklyCap', { v: formatDecimal(round1(Math.abs(capped))) });
   let adj = (capped * KCAL_PER_KG) / 7;
   if (adj < 0 && -adj > t * MAX_DEFICIT_RATIO) {
     adj = -t * MAX_DEFICIT_RATIO;
-    reason = 'Günlük açık, harcamanın %25\'ini aşmayacak şekilde sınırlandı.';
+    reason = tt('nutr.reason.deficitCap');
   }
   if (adj > 0 && adj > t * MAX_SURPLUS_RATIO) {
     adj = t * MAX_SURPLUS_RATIO;
-    reason = 'Günlük fazla, harcamanın %20\'sini aşmayacak şekilde sınırlandı.';
+    reason = tt('nutr.reason.surplusCap');
   }
   let kcal = t + adj;
   const floor = MIN_KCAL[i.sex];
@@ -154,10 +167,10 @@ export function calorieTarget(i: BodyInput, level: ActivityLevel, weeklyRateKg: 
     // Harcamanın kendisi alt sınırın altında: açık oluşturulamaz, hedef = harcama (artı fark çıkmaz)
     kcal = t;
     deficitBlocked = true;
-    reason = `Harcaman güvenlik alt sınırının (${floor} kcal) altında olduğu için alt sınır nedeniyle açık oluşturulamıyor; hedef harcamana eşitlendi.`;
+    reason = tt('nutr.reason.floorBlocked', { floor });
   } else if (kcal < floor) {
     kcal = floor;
-    reason = `Güvenlik alt sınırı: ${i.sex === 'female' ? 'kadınlar' : 'erkekler'} için günlük en az ${floor} kcal.`;
+    reason = tt(i.sex === 'female' ? 'nutr.reason.floorFemale' : 'nutr.reason.floorMale', { floor });
   }
   kcal = Math.round(kcal);
   const adjustment = Math.round(kcal - t);
@@ -207,7 +220,7 @@ export function goalEta(opts: { weightKg: number; weeklyRateKg: number; targetWe
   if (target == null && opts.targetBodyFat != null) {
     if (opts.targetBodyFat <= 0 || opts.targetBodyFat >= 60) return null;
     target = leanMassKg(opts.weightKg, opts.bodyFatPercent) / (1 - opts.targetBodyFat / 100);
-    note = 'Yağsız kütlenin korunduğu varsayılır.';
+    note = tt('nutr.eta.leanKept');
   }
   if (target == null) return null;
   const diff = target - opts.weightKg;
@@ -215,7 +228,7 @@ export function goalEta(opts: { weightKg: number; weeklyRateKg: number; targetWe
   if (direction === 'hold') return { targetWeightKg: round1(target), weeks: 0, direction, note };
   const sameWay = (direction === 'lose' && opts.weeklyRateKg < 0) || (direction === 'gain' && opts.weeklyRateKg > 0);
   if (!sameWay || Math.abs(opts.weeklyRateKg) < 0.01) {
-    return { targetWeightKg: round1(target), weeks: null, direction, note: 'Haftalık hızı hedefin yönüne göre ayarla.' };
+    return { targetWeightKg: round1(target), weeks: null, direction, note: tt('nutr.eta.rateDir') };
   }
   return { targetWeightKg: round1(target), weeks: Math.ceil(Math.abs(diff) / Math.abs(opts.weeklyRateKg)), direction, note };
 }

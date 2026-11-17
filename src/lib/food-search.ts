@@ -1,3 +1,4 @@
+import { formatDecimal, getLanguage, type Lang } from '@/i18n';
 import { FOODS_TR, type FoodCategoryId, type FoodPortion, type FoodTr } from '@/data/foods-tr';
 
 /** Arama için: küçük harf + Türkçe karakter/aksan sadeleştirme ("Çorbası" → "corbasi"). */
@@ -20,10 +21,106 @@ export function normalizeTr(s: string) {
 }
 
 type Indexed = { food: FoodTr; name: string; words: string[]; aliases: string[] };
+// Arama her iki dilde çalışır: Türkçe ad (ana) + İngilizce ad (takma ad gibi) birlikte indekslenir
 const INDEX: Indexed[] = FOODS_TR.map((food) => {
   const name = normalizeTr(food.name);
-  return { food, name, words: name.split(' '), aliases: food.aliases.map(normalizeTr) };
+  return { food, name, words: name.split(' '), aliases: [...food.aliases.map(normalizeTr), normalizeTr(food.nameEn)] };
 });
+
+/** Geçerli dilde yiyecek adı. */
+export function foodName(food: Pick<FoodTr, 'name' | 'nameEn'>) {
+  return getLanguage() === 'en' ? food.nameEn : food.name;
+}
+
+const BY_TR_NAME = new Map(FOODS_TR.map((f) => [f.name, f]));
+
+/**
+ * Kayıtlı yiyecek adını gösterim diline çevirir: veritabanından seçilmiş yiyecekler Türkçe asıl adla saklanır
+ * (kayıtta hangi dil olursa olsun); kullanıcının elle yazdığı adlar olduğu gibi kalır.
+ */
+export function displayFoodName(stored: string) {
+  const f = BY_TR_NAME.get(stored);
+  return f ? foodName(f) : stored;
+}
+
+/** Kayıtlı porsiyon metnini gösterim diline çevirir (Türkçe saklanan etiketler EN'de çevrilir; elle yazılanlar da kelime bazlı). */
+export function displayServing(stored: string | null | undefined) {
+  return stored ? portionLabel(stored) : stored;
+}
+
+const PORTION_EN: [RegExp, string][] = [
+  [/yemek kaşığı/g, 'tbsp'],
+  [/çay kaşığı/g, 'tsp'],
+  [/su bardağı/g, 'glass'],
+  [/ince belli bardak/g, 'tea glass'],
+  [/büyük bardak/g, 'large glass'],
+  [/küçük bardak/g, 'small glass'],
+  [/bardak/g, 'glass'],
+  [/büyük porsiyon/g, 'large serving'],
+  [/küçük porsiyon/g, 'small serving'],
+  [/porsiyon/g, 'serving'],
+  [/büyük adet/g, 'large piece'],
+  [/küçük adet/g, 'small piece'],
+  [/adet/g, 'piece'],
+  [/büyük kase/g, 'large bowl'],
+  [/küçük kase/g, 'small bowl'],
+  [/kase/g, 'bowl'],
+  [/büyük tabak/g, 'large plate'],
+  [/küçük tabak/g, 'small plate'],
+  [/küçük dilim/g, 'small slice'],
+  [/dilim/g, 'slice'],
+  [/avuç/g, 'handful'],
+  [/büyük kutu/g, 'large can'],
+  [/küçük kutu/g, 'small can'],
+  [/kutu/g, 'can'],
+  [/büyük şişe/g, 'large bottle'],
+  [/küçük şişe/g, 'small bottle'],
+  [/şişe/g, 'bottle'],
+  [/ölçek/g, 'scoop'],
+  [/büyük paket/g, 'large pack'],
+  [/küçük paket/g, 'small pack'],
+  [/paket/g, 'pack'],
+  [/yarım ekmek/g, 'half loaf'],
+  [/kibrit kutusu/g, 'matchbox'],
+  [/büyük shaker/g, 'large shaker'],
+  [/küçük shaker/g, 'small shaker'],
+  [/büyük kova/g, 'large tub'],
+  [/küçük kap/g, 'small tub'],
+  [/kap\b/g, 'tub'],
+  [/dolmalık biber/g, 'stuffing pepper'],
+  [/orta boy/g, 'medium'],
+  [/büyük boy/g, 'large'],
+  [/küçük boy/g, 'small'],
+  [/küçük tablet/g, 'small tablet'],
+  [/tablet/g, 'tablet'],
+  [/fincan/g, 'cup'],
+  [/kupa/g, 'mug'],
+  [/parça/g, 'piece'],
+  [/somun/g, 'loaf'],
+  [/yaprak/g, 'leaf'],
+  [/demet/g, 'bunch'],
+  [/salkım/g, 'bunch'],
+  [/kepçe/g, 'ladle'],
+  [/külah/g, 'cone'],
+  [/şiş/g, 'skewer'],
+  [/filet/g, 'fillet'],
+  [/kare/g, 'square'],
+  [/diş/g, 'clove'],
+  [/baş/g, 'head'],
+  [/top/g, 'scoop'],
+  [/küp/g, 'cube'],
+  [/yumurta/g, 'egg'],
+  [/küçük/g, 'small'],
+  [/büyük/g, 'large'],
+];
+
+/** Porsiyon etiketi geçerli dilde ("2 yemek kaşığı (30 g)" → "2 tbsp (30 g)"); ondalık ayırıcı da yerel. */
+export function portionLabel(label: string, lang: Lang = getLanguage()) {
+  if (lang !== 'en') return label;
+  let out = label;
+  for (const [rx, to] of PORTION_EN) out = out.replace(rx, to);
+  return out.replace(/(\d),(\d)/g, '$1.$2');
+}
 
 /** 0 = en iyi eşleşme; null = eşleşme yok. Tüm sözcükler eşleşmeli. */
 function scoreEntry(e: Indexed, tokens: string[], whole: string): number | null {
@@ -76,11 +173,12 @@ export function portionGrams(portion: Pick<FoodPortion, 'grams'>, qty: number) {
 }
 
 /** "2 × 1 adet (50 g)" gibi kayıt metni; gram modunda "150 g". */
-export function servingText(food: Pick<FoodTr, 'unit'>, portion: FoodPortion | null, qty: number, grams: number) {
-  const g = `${Math.round(grams * 10) / 10}`.replace('.', ',');
+export function servingText(food: Pick<FoodTr, 'unit'>, portion: FoodPortion | null, qty: number, grams: number, lang: Lang = getLanguage()) {
+  const g = formatDecimal(Math.round(grams * 10) / 10, 1, lang);
   if (!portion) return `${g} ${food.unit}`;
-  const q = `${qty}`.replace('.', ',');
-  return qty === 1 ? portion.label : `${q} × ${portion.label}`;
+  const q = formatDecimal(qty, 2, lang);
+  const label = portionLabel(portion.label, lang);
+  return qty === 1 ? label : `${q} × ${label}`;
 }
 
 export function foodById(id: string) {

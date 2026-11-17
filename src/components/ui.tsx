@@ -18,6 +18,7 @@ import { Icon, type IconName } from '@/components/icon';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { haptic } from '@/lib/haptics';
+import { t as tt, type MsgKey } from '@/i18n';
 
 export type { IconName };
 
@@ -266,20 +267,21 @@ export function Badge({ label, tint, bg, icon }: { label: string; tint: string; 
   );
 }
 
-/** İkon butonlarının varsayılan ekran okuyucu etiketleri (Türkçe). */
-const ICON_LABELS: Partial<Record<IconName, string>> = {
-  close: 'Kapat',
-  chevronUp: 'Yukarı taşı',
-  chevronDown: 'Aşağı',
-  chevronLeft: 'Önceki',
-  chevronRight: 'Sonraki',
-  trash: 'Sil',
-  settings: 'Ayarlar',
-  add: 'Ekle',
-  body: 'Vücut analizi',
-  more: 'Daha fazla seçenek',
-  edit: 'Düzenle',
+/** İkon butonlarının varsayılan ekran okuyucu etiketleri (geçerli dilde; çağrı anında). */
+const ICON_LABEL_KEYS: Partial<Record<IconName, MsgKey>> = {
+  close: 'common.close',
+  chevronUp: 'common.move_up',
+  chevronDown: 'ui.down',
+  chevronLeft: 'common.previous',
+  chevronRight: 'ui.next',
+  trash: 'common.delete',
+  settings: 'layout.settings',
+  add: 'common.add',
+  body: 'common.body_analysis',
+  more: 'ui.more_options',
+  edit: 'common.edit',
 };
+const iconLabel = (icon: IconName) => (ICON_LABEL_KEYS[icon] ? tt(ICON_LABEL_KEYS[icon]!) : icon);
 
 export function IconButton({
   icon,
@@ -289,8 +291,10 @@ export function IconButton({
   bg,
   size = 18,
   style,
+  disabled,
 }: {
   icon: IconName;
+  disabled?: boolean;
   /** ekran okuyucu etiketi (verilmezse ikona göre varsayılan) */
   label?: string;
   onPress?: () => void;
@@ -303,10 +307,11 @@ export function IconButton({
   return (
     <PressableScale
       accessibilityRole="button"
-      accessibilityLabel={label ?? ICON_LABELS[icon] ?? icon}
+      accessibilityLabel={label ?? iconLabel(icon)}
       onPress={onPress}
+      disabled={disabled}
       hitSlop={8}
-      style={[styles.iconBtn, { backgroundColor: bg ?? t.surfaceRaised, borderColor: t.border }, style]}>
+      style={[styles.iconBtn, { backgroundColor: bg ?? t.surfaceRaised, borderColor: t.border }, disabled && { opacity: 0.35 }, style]}>
       <Icon name={icon} size={size} color={color ?? t.text} />
     </PressableScale>
   );

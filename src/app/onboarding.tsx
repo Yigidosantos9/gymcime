@@ -62,6 +62,8 @@ export default function Onboarding() {
       incMachine: 2.5,
       setStyle: 'auto',
       recoveryDays: 2,
+      barWeight: 20,
+      plates: [25, 20, 15, 10, 5, 2.5, 1.25],
     });
     await createRoutinesFromTemplate(db, days <= 3 ? 'full' : days === 4 ? 'upperlower' : 'ppl');
     haptic.success();

@@ -8,12 +8,13 @@ import { BodyMap } from '@/components/body-map';
 import { Icon } from '@/components/icon';
 import { useSheet } from '@/components/sheet';
 import { Card, EmptyState, IconButton, PressableScale, Ring, SectionHeader, Stat, T, Tile } from '@/components/ui';
-import { Radius, Spacing } from '@/constants/theme';
+import { Font, Radius, Spacing } from '@/constants/theme';
 import {
   getActiveWorkout,
   getHomeStats,
   getProfile,
   getRoutine,
+  getWeekPlan,
   listRoutines,
   listWorkouts,
   muscleLastTrained,
@@ -26,8 +27,10 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDayLong, formatMinutes } from '@/lib/format';
 import { computeRecovery, restingMuscles } from '@/lib/recovery';
 import { beginWorkout } from '@/lib/start-workout';
+import { dayStatus, shortRoutineName, weekDayTs, weeklyAdherence, type DayStatus } from '@/lib/week-plan';
 
 const WEEK = ['P', 'S', 'Ç', 'P', 'C', 'C', 'P'];
+const WEEK_FULL = ['Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi', 'Pazar'];
 const DAYS = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
@@ -43,7 +46,7 @@ export default function Home() {
   const t = useTheme();
   const sheet = useSheet();
   const { data, db } = useDbQuery(async (db) => {
-    const [profile, stats, routines, last, active, muscles, weeks, prs, lastTrained] = await Promise.all([
+    const [profile, stats, routines, last, active, muscles, weeks, prs, lastTrained, plan] = await Promise.all([
       getProfile(db),
       getHomeStats(db),
       listRoutines(db),
@@ -53,6 +56,7 @@ export default function Home() {
       weeklyVolume(db, 2),
       recentPrCount(db, 30),
       muscleLastTrained(db),
+      getWeekPlan(db),
     ]);
     const recoveryDays = profile?.recoveryDays ?? 2;
     const recovery = computeRecovery(lastTrained, recoveryDays);
@@ -62,15 +66,21 @@ export default function Home() {
       return ms.length ? restingMuscles(ms, recovery).length / ms.length : 1;
     };
     const candidates = routines.filter((r) => r.exercise_count > 0);
-    const next = candidates.length
+    const suggested = candidates.length
       ? [...candidates].sort((a, b) => restingShare(a) - restingShare(b) || (a.last_done ?? 0) - (b.last_done ?? 0))[0]
       : null;
+    // Haftalık plan: bugün rutin atanmışsa o; plan var ama bugün boşsa dinlenme günü (önerilen rutin "yine de" için kalır)
+    const todayPlan = plan[(new Date().getDay() + 6) % 7];
+    const hasPlan = plan.some((d) => d.routine_id != null);
+    const plannedToday = todayPlan.routine_id != null ? (routines.find((r) => r.id === todayPlan.routine_id) ?? null) : null;
+    const restDay = hasPlan && todayPlan.routine_id == null;
+    const next = plannedToday ?? suggested;
     const nextDetail = next ? await getRoutine(db, next.id) : null;
-    return { profile, stats, routines, last: last[0] ?? null, active, muscles, weeks, prs, next, nextDetail, recovery, recoveryDays };
+    return { profile, stats, routines, last: last[0] ?? null, active, muscles, weeks, prs, next, suggested, plannedToday, restDay, nextDetail, recovery, recoveryDays, plan, hasPlan };
   });
 
   if (!data) return <View style={{ flex: 1, backgroundColor: t.background }} />;
-  const { profile, stats, routines, last, active, muscles, weeks, prs, next, nextDetail, recovery, recoveryDays } = data;
+  const { profile, stats, routines, last, active, muscles, weeks, prs, next, suggested, plannedToday, restDay, nextDetail, recovery, recoveryDays, plan, hasPlan } = data;
   const nextResting = next ? restingMuscles(next.muscles?.split(',') ?? [], recovery) : [];
 
   const now = new Date();
@@ -178,12 +188,17 @@ export default function Home() {
             <View style={[styles.wave, { width: 260, height: 260, top: -120, right: -90 }]} />
             <View style={[styles.wave, { width: 160, height: 160, bottom: -80, left: -40, opacity: 0.06 }]} />
             <T variant="overline" color="rgba(255,255,255,0.75)">
-              {next ? 'Sıradaki antrenman' : 'Hazır mısın?'}
+              {restDay ? 'Haftalık plan' : plannedToday ? (stats.daysDone.has(todayIdx) ? 'Bugün · tamamlandı' : 'Bugün') : next ? 'Sıradaki antrenman' : 'Hazır mısın?'}
             </T>
             <T variant="title" color="#fff" style={{ marginTop: 2 }}>
-              {next?.name ?? 'Serbest Antrenman'}
+              {restDay ? 'Bugün dinlenme günü 🌊' : plannedToday ? `Bugün: ${plannedToday.name}` : (next?.name ?? 'Serbest Antrenman')}
             </T>
-            {nextDetail && nextDetail.items.length > 0 && (
+            {restDay && (
+              <T variant="label" color="rgba(255,255,255,0.85)" style={{ marginTop: 6 }}>
+                Kaslarının toparlanma zamanı. İstersen yine de çalışabilirsin{suggested ? ` (öneri: ${suggested.name})` : ''}.
+              </T>
+            )}
+            {!restDay && nextDetail && nextDetail.items.length > 0 && (
               <>
                 <View style={styles.heroMeta}>
                   <HeroMeta icon="barbell" text={`${nextDetail.items.length} egzersiz`} />
@@ -204,7 +219,7 @@ export default function Home() {
                 </View>
               </>
             )}
-            {nextResting.length > 0 && (
+            {!restDay && nextResting.length > 0 && (
               <View style={styles.heroWarn}>
                 <Icon name="moon" size={12} color="#fff" />
                 <T variant="caption" color="#fff" style={{ flex: 1 }}>
@@ -213,10 +228,12 @@ export default function Home() {
               </View>
             )}
             <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg }}>
-              <PressableScale onPress={() => beginWorkout(db, next?.id ?? null, sheet)} style={[styles.heroBtn, { backgroundColor: '#fff', flex: 1 }]}>
+              <PressableScale
+                onPress={() => beginWorkout(db, (restDay ? suggested : next)?.id ?? null, sheet)}
+                style={[styles.heroBtn, { backgroundColor: '#fff', flex: 1 }]}>
                 <Icon name="play" size={15} color={t.isDark ? '#083F66' : t.primaryStrong} />
                 <T variant="heading" color={t.isDark ? '#083F66' : t.primaryStrong}>
-                  Antrenmana başla
+                  {restDay ? 'Yine de başla' : 'Antrenmana başla'}
                 </T>
               </PressableScale>
               <PressableScale
@@ -276,6 +293,10 @@ export default function Home() {
               <T variant="num">{prs}</T>
             </Tile>
           </View>
+        </Animated.View>
+
+        <Animated.View entering={FadeInDown.delay(150).duration(400)} style={{ marginTop: Spacing.md }}>
+          <PlanStrip plan={plan} hasPlan={hasPlan} daysDone={stats.daysDone} todayIdx={todayIdx} now={now.getTime()} />
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(180).duration(400)}>
@@ -410,6 +431,54 @@ export default function Home() {
   );
 }
 
+/** Haftalık plan şeridi: her gün için durum (✓ yapıldı, soluk = kaçırıldı), altında rutinin kısa adı. */
+function PlanStrip({ plan, hasPlan, daysDone, todayIdx, now }: { plan: Awaited<ReturnType<typeof getWeekPlan>>; hasPlan: boolean; daysDone: Set<number>; todayIdx: number; now: number }) {
+  const t = useTheme();
+  const adherence = weeklyAdherence(
+    plan.map((d) => d.routine_id != null),
+    daysDone,
+  );
+  return (
+    <Tile icon="history" label={hasPlan ? `Bu hafta plan: ${adherence.done}/${adherence.planned}` : 'Haftalık plan'} onPress={() => router.push('/week-plan')}>
+      {!hasPlan ? (
+        <T variant="caption" secondary>
+          Pazartesi Göğüs, Salı Sırt… günlere rutin ata; burada ve takvimde görünsün.
+        </T>
+      ) : (
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          {plan.map((d, i) => {
+            const planned = d.routine_id != null;
+            const status: DayStatus = dayStatus(planned, daysDone.has(i), weekDayTs(now, i), now);
+            const isToday = i === todayIdx;
+            return (
+              <View key={i} style={{ alignItems: 'center', gap: 4, flex: 1 }} accessible accessibilityLabel={`${WEEK_FULL[i]}: ${d.routine_name ?? 'dinlenme'}${status === 'done' ? ', yapıldı' : status === 'missed' ? ', kaçırıldı' : ''}`}>
+                <T variant="caption" color={isToday ? t.primary : t.textMuted} style={{ fontSize: 10, fontFamily: isToday ? Font.heavy : Font.regular }}>
+                  {WEEK[i]}
+                </T>
+                <View
+                  style={[
+                    styles.planDot,
+                    status === 'done' && { backgroundColor: t.primary, borderColor: t.primary },
+                    status === 'upcoming' && { borderColor: t.primary },
+                    status === 'missed' && { borderColor: t.gold, opacity: 0.55, borderStyle: 'dashed' },
+                    status === 'rest' && { borderColor: t.border, backgroundColor: t.surfacePressed },
+                    isToday && { borderWidth: 2.5 },
+                  ]}>
+                  {status === 'done' && <Icon name="check" size={13} color={t.onPrimary} weight="bold" />}
+                  {status === 'missed' && <Icon name="close" size={11} color={t.gold} weight="bold" />}
+                </View>
+                <T variant="caption" color={planned ? (status === 'missed' ? t.textMuted : t.textSecondary) : t.textMuted} numberOfLines={1} style={{ fontSize: 9 }}>
+                  {planned ? shortRoutineName(d.routine_name, 6) : '–'}
+                </T>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </Tile>
+  );
+}
+
 function HeroMeta({ icon, text }: { icon: 'barbell' | 'layers' | 'clock'; text: string }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
@@ -441,6 +510,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.md },
   weekDots: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.sm },
   dot: { width: 12, height: 12, borderRadius: 6 },
+  planDot: { width: 28, height: 28, borderRadius: 14, borderWidth: 1.5, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   heroWarn: {
     flexDirection: 'row',
     alignItems: 'center',

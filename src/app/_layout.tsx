@@ -7,8 +7,9 @@ import {
 } from '@expo-google-fonts/plus-jakarta-sans';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { SQLiteProvider } from 'expo-sqlite';
+import { SQLiteProvider, useSQLiteContext } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
 import { View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
@@ -19,6 +20,7 @@ import { AppThemeProvider } from '@/components/theme-provider';
 import { Font } from '@/constants/theme';
 import { migrateDb } from '@/db/migrate';
 import { useTheme } from '@/hooks/use-theme';
+import { syncReminders } from '@/lib/reminder-io';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -43,6 +45,15 @@ export default function RootLayout() {
   );
 }
 
+/** Açılışta hatırlatıcı bildirimlerini ayarlara göre yeniden kurar (idempotent). */
+function ReminderBoot() {
+  const db = useSQLiteContext();
+  useEffect(() => {
+    syncReminders(db);
+  }, [db]);
+  return null;
+}
+
 function Navigation() {
   const t = useTheme();
   const base = t.isDark ? DarkTheme : DefaultTheme;
@@ -56,6 +67,7 @@ function Navigation() {
       <RestTimerProvider>
         <SheetProvider>
           <StatusBar style={t.isDark ? 'light' : 'dark'} />
+          <ReminderBoot />
           <Stack
             screenOptions={{
               headerShadowVisible: false,
@@ -83,6 +95,7 @@ function Navigation() {
             <Stack.Screen name="session/[id]" options={{ title: '', headerLeft: () => <HeaderBack /> }} />
             <Stack.Screen name="body" options={{ title: 'Vücut analizi', headerLeft: () => <HeaderBack /> }} />
             <Stack.Screen name="food/add" options={{ title: 'Yiyecek ekle', headerLeft: () => <HeaderBack /> }} />
+            <Stack.Screen name="week-plan" options={{ title: 'Haftalık plan', headerLeft: () => <HeaderBack /> }} />
             <Stack.Screen name="settings" options={{ title: 'Ayarlar', headerLeft: () => <HeaderBack /> }} />
           </Stack>
         </SheetProvider>

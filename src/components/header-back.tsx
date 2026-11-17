@@ -4,11 +4,14 @@ import { useTheme } from '@/hooks/use-theme';
 import { leave } from '@/lib/nav';
 
 /** Her sunumda (kart veya modal) çalışan geri butonu. */
-export function HeaderBack() {
+/** `onPress` verilirse (ör. kaydedilmemiş değişiklik kontrolü) `leave` yerine o çalışır. */
+export function HeaderBack({ onPress }: { onPress?: () => void } = {}) {
   const t = useTheme();
   return (
     <PressableScale
-      onPress={leave}
+      onPress={onPress ?? leave}
+      accessibilityRole="button"
+      accessibilityLabel="Geri"
       hitSlop={12}
       style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: t.surfaceRaised }}>
       <Icon name="chevronLeft" size={16} color={t.text} />

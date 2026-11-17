@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MuscleIcon } from '@/components/body-map';
 import { Icon } from '@/components/icon';
+import { openPlateSheet } from '@/components/plate-sheet';
 import { RestTimerBar, useRestTimer } from '@/components/rest-timer';
 import { useSheet } from '@/components/sheet';
 import { Badge, Button, Card, IconButton, PressableScale, T } from '@/components/ui';
@@ -36,6 +37,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { formatDuration, formatWeight, parseNumber } from '@/lib/format';
 import { formatClock, formatHold, formatKm, isTimeBased, parseClock, parseHold, parseKm } from '@/lib/cardio';
 import { haptic } from '@/lib/haptics';
+import { DEFAULT_PLATES } from '@/lib/plates';
 import {
   adjustBodyweight,
   EFFORT,
@@ -111,7 +113,7 @@ export default function WorkoutScreen() {
         machine: profile?.incMachine ?? 2.5,
       };
       const detail = await getWorkoutDetail(db, workoutId, { goal: profile?.goal, increments, setStyle: profile?.setStyle });
-      return { detail, profileRest: profile?.restSeconds ?? 90, increments };
+      return { detail, profileRest: profile?.restSeconds ?? 90, increments, plateCfg: { bar: profile?.barWeight ?? 20, plates: profile?.plates ?? DEFAULT_PLATES } };
     },
     [workoutId],
   );
@@ -259,6 +261,7 @@ export default function WorkoutScreen() {
               <ExerciseBlock
                 ex={ex}
                 increments={data.increments}
+                plateCfg={data.plateCfg}
                 db={db}
                 sheet={sheet}
                 profileRest={profileRest}
@@ -438,6 +441,7 @@ function Elapsed({ since }: { since: number }) {
 function ExerciseBlock({
   ex,
   increments,
+  plateCfg,
   db,
   sheet,
   profileRest,
@@ -446,6 +450,7 @@ function ExerciseBlock({
 }: {
   ex: WorkoutExerciseFull;
   increments: Increments;
+  plateCfg: { bar: number; plates: number[] };
   db: Db;
   sheet: Sheet;
   profileRest: number;
@@ -463,6 +468,14 @@ function ExerciseBlock({
   const { rows, liveNote, plan } = planRows(ex, step);
   const timeBased = isTimeBased(ex.kind);
   const isCardio = ex.kind === 'cardio';
+
+  /** Halter egzersizlerinde plaka hesaplayıcı: açılışta en ağır girilmiş set, yoksa önerilen ağırlık */
+  const isBarbell = ex.equipment === 'Halter' && !timeBased;
+  const openPlates = () => {
+    const entered = ex.sets.filter((s) => s.set_type !== 'warmup' && s.weight != null).map((s) => s.weight as number);
+    const initial = entered.length ? Math.max(...entered) : (sug.weight ?? 0);
+    openPlateSheet(sheet, { initial, bar: plateCfg.bar, plates: plateCfg.plates, step });
+  };
 
   const openRest = () =>
     sheet.custom({
@@ -500,6 +513,7 @@ function ExerciseBlock({
               },
               { label: `Dinlenme: ${formatRest(rest)}`, icon: 'timer' as const, onPress: openRest },
             ]),
+        ...(isBarbell ? [{ label: 'Plaka hesaplayıcı', icon: 'barbell' as const, onPress: openPlates }] : []),
         { label: 'Geçmişi ve grafikleri gör', icon: 'progress', onPress: () => router.push(`/exercise/${ex.exercise_id}`) },
         {
           label: 'Egzersizi kaldır',
@@ -643,9 +657,18 @@ function ExerciseBlock({
           </>
         ) : (
           <>
-            <T variant="overline" muted style={styles.colInput}>
-              {ex.kind === 'bodyweight' ? '+kg' : 'kg'}
-            </T>
+            {isBarbell ? (
+              <PressableScale onPress={openPlates} accessibilityRole="button" accessibilityLabel="Plaka hesaplayıcı" hitSlop={8} style={[styles.colInput, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 }]}>
+                <T variant="overline" color={t.primary}>
+                  kg
+                </T>
+                <Icon name="barbell" size={10} color={t.primary} />
+              </PressableScale>
+            ) : (
+              <T variant="overline" muted style={styles.colInput}>
+                {ex.kind === 'bodyweight' ? '+kg' : 'kg'}
+              </T>
+            )}
             <T variant="overline" muted style={styles.colInput}>
               Tekrar
             </T>

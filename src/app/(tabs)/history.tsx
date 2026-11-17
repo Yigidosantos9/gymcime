@@ -7,12 +7,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Icon, type IconName } from '@/components/icon';
 import { formatMin } from '@/lib/cardio';
 import { HomeBack } from '@/components/tab-back';
-import { Badge, Card, EmptyState, PressableScale, ScreenHeader, T } from '@/components/ui';
+import { useSheet } from '@/components/sheet';
+import { Badge, Card, EmptyState, IconButton, PressableScale, ScreenHeader, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
-import { listWorkouts, type WorkoutListItem } from '@/db/queries';
+import { getWeekPlan, listWorkouts, workoutsBetween, type WorkoutListItem } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
 import { formatMinutes, startOfDay } from '@/lib/format';
+import { beginWorkout } from '@/lib/start-workout';
+import { dayStatus, MONTH_NAMES, monthGrid, shiftMonth, shortRoutineName, WEEKDAY_NAMES, WEEKDAY_SHORT, weekdayOf } from '@/lib/week-plan';
 
 const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const DOW = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
@@ -47,6 +50,7 @@ export default function History() {
           <>
             <HomeBack />
             <ScreenHeader title="Geçmiş" subtitle={data ? `${data.length} antrenman` : undefined} />
+            <MonthCalendar />
             <Heatmap starts={(data ?? []).map((w) => w.started_at)} />
           </>
         }
@@ -107,6 +111,116 @@ export default function History() {
         }}
       />
     </SafeAreaView>
+  );
+}
+
+/**
+ * Aylık takvim: yapılan antrenmanlar (rutine göre renk + kısa ad), planlı ama yapılmamış günler (soluk, kesikli çerçeve),
+ * kaçırılan planlı günler (daha da soluk). Gün dokununca o günün antrenmanları ya da planı.
+ */
+function MonthCalendar() {
+  const t = useTheme();
+  const sheet = useSheet();
+  const [{ year, month }, setYm] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const grid = monthGrid(year, month);
+  const from = grid[0][0].ts;
+  const to = new Date(grid[grid.length - 1][6].ts);
+  to.setDate(to.getDate() + 1);
+  const { data, db } = useDbQuery(
+    async (db) => ({ workouts: await workoutsBetween(db, from, to.getTime()), plan: await getWeekPlan(db) }),
+    [from],
+  );
+  const [now] = useState(() => Date.now());
+  const today = startOfDay(now);
+  const palette = [t.primary, t.gold, t.violet, t.success, t.danger];
+  const colorOf = (routineId: number | null) => (routineId == null ? t.textSecondary : palette[routineId % palette.length]);
+
+  const byDay = new Map<number, NonNullable<typeof data>['workouts']>();
+  for (const w of data?.workouts ?? []) {
+    const k = startOfDay(w.started_at);
+    byDay.set(k, [...(byDay.get(k) ?? []), w]);
+  }
+  const hasPlan = data?.plan.some((d) => d.routine_id != null) ?? false;
+
+  const openDay = (ts: number) => {
+    const ws = byDay.get(ts) ?? [];
+    const wd = weekdayOf(ts);
+    const planned = data?.plan[wd];
+    const title = `${WEEKDAY_NAMES[wd]}, ${new Date(ts).getDate()} ${MONTH_NAMES[new Date(ts).getMonth()]}`;
+    const plannedLine = planned?.routine_id != null ? `Plan: ${planned.routine_name}` : hasPlan ? 'Plan: dinlenme günü' : undefined;
+    sheet.actions({
+      title,
+      message: [plannedLine, planned?.note].filter(Boolean).join(' · ') || (ws.length === 0 ? 'Bu gün antrenman yok.' : undefined),
+      cancelLabel: 'Kapat',
+      actions: [
+        ...ws.map((w) => ({ label: w.name, icon: 'history' as const, onPress: () => router.push(`/session/${w.id}`) })),
+        ...(ts === today && ws.length === 0 && planned?.routine_id != null
+          ? [{ label: `${planned.routine_name} başlat`, icon: 'play' as const, style: 'primary' as const, onPress: () => beginWorkout(db, planned.routine_id, sheet) }]
+          : []),
+        { label: 'Haftalık planı aç', icon: 'edit' as const, onPress: () => router.push('/week-plan') },
+      ],
+    });
+  };
+
+  return (
+    <Card style={{ marginBottom: Spacing.md }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: Spacing.sm }}>
+        <IconButton icon="chevronLeft" label="Önceki ay" onPress={() => setYm((c) => shiftMonth(c.year, c.month, -1))} bg="transparent" color={t.textSecondary} size={14} />
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <T variant="heading">
+            {MONTH_NAMES[month]} {year}
+          </T>
+        </View>
+        <IconButton icon="chevronRight" label="Sonraki ay" onPress={() => setYm((c) => shiftMonth(c.year, c.month, 1))} bg="transparent" color={t.textSecondary} size={14} />
+      </View>
+      <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+        {WEEKDAY_SHORT.map((d) => (
+          <T key={d} variant="caption" muted style={{ flex: 1, textAlign: 'center', fontSize: 10 }}>
+            {d}
+          </T>
+        ))}
+      </View>
+      {grid.map((row, ri) => (
+        <View key={ri} style={{ flexDirection: 'row', gap: 3, marginBottom: 3 }}>
+          {row.map((c) => {
+            const ws = byDay.get(c.ts) ?? [];
+            const planned = data?.plan[weekdayOf(c.ts)];
+            const isPlanned = planned?.routine_id != null;
+            const status = dayStatus(isPlanned, ws.length > 0, c.ts, now);
+            const isToday = c.ts === today;
+            const color = ws.length > 0 ? colorOf(ws[0].routine_id) : colorOf(planned?.routine_id ?? null);
+            const label = ws.length > 0 ? shortRoutineName(ws[0].name, 5) : status === 'upcoming' || status === 'missed' ? shortRoutineName(planned?.routine_name, 5) : '';
+            return (
+              <PressableScale
+                key={c.ts}
+                onPress={() => openDay(c.ts)}
+                hapticOnPress={false}
+                scaleTo={0.94}
+                accessibilityLabel={`${new Date(c.ts).getDate()} ${MONTH_NAMES[new Date(c.ts).getMonth()]}: ${ws.length > 0 ? ws.map((w) => w.name).join(', ') : isPlanned ? `planlı ${planned?.routine_name}` : 'boş'}`}
+                style={[
+                  styles.calCell,
+                  { opacity: c.inMonth ? 1 : 0.35 },
+                  status === 'done' && { backgroundColor: color + '33', borderColor: color },
+                  status === 'upcoming' && { borderColor: color, borderStyle: 'dashed', opacity: c.inMonth ? 0.6 : 0.3 },
+                  status === 'missed' && { borderColor: t.border, borderStyle: 'dashed', opacity: c.inMonth ? 0.4 : 0.2 },
+                  isToday && { borderWidth: 2, borderColor: t.primary, borderStyle: 'solid' },
+                ]}>
+                <T variant="label" color={status === 'done' ? t.text : t.textSecondary} style={{ fontSize: 12, fontFamily: isToday ? Font.heavy : Font.medium }}>
+                  {new Date(c.ts).getDate()}
+                </T>
+                <T variant="caption" color={status === 'done' ? color : t.textMuted} numberOfLines={1} style={{ fontSize: 8, lineHeight: 10 }}>
+                  {label || ' '}
+                </T>
+                {ws.length > 1 && <View style={[styles.multi, { backgroundColor: color }]} />}
+              </PressableScale>
+            );
+          })}
+        </View>
+      ))}
+    </Card>
   );
 }
 
@@ -173,6 +287,8 @@ function Meta({ icon, text }: { icon: IconName; text: string }) {
 
 const styles = StyleSheet.create({
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: Spacing.lg, marginBottom: Spacing.sm },
+  calCell: { flex: 1, aspectRatio: 0.95, borderRadius: 8, borderWidth: 1, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center', gap: 1 },
+  multi: { position: 'absolute', top: 3, right: 3, width: 5, height: 5, borderRadius: 3 },
   date: { width: 46, height: 52, borderRadius: Radius.md, alignItems: 'center', justifyContent: 'center' },
   meta: { flexDirection: 'row', gap: Spacing.md, marginTop: 4 },
 });

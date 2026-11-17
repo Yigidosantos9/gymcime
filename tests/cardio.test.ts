@@ -40,7 +40,7 @@ function addCardio(raw: DatabaseSync, exerciseId: number, startedAt: number, set
 
   // ── v7 migrasyonu: şema, seed türleri, adlar, idempotent
   const { raw, db } = await freshDb();
-  assert((raw.prepare('PRAGMA user_version').get() as any).user_version === DB_VERSION && DB_VERSION === 7, 'sürüm 7');
+  assert((raw.prepare('PRAGMA user_version').get() as any).user_version === DB_VERSION && DB_VERSION >= 7, `sürüm ${DB_VERSION}`);
   const kinds = Object.fromEntries((raw.prepare('SELECT slug, kind, name FROM exercises').all() as any[]).map((r) => [r.slug, r]));
   assert(kinds.treadmill.kind === 'cardio' && kinds.bike.kind === 'cardio' && kinds.rower.kind === 'cardio', 'kardiyo makineleri cardio');
   assert(kinds.plank.kind === 'timed' && kinds.pushup.kind === 'bodyweight' && kinds.pullup.kind === 'bodyweight' && kinds.bench.kind === 'strength' && kinds['db-curl'].kind === 'strength', 'plank timed, vücut bodyweight, diğerleri strength');
@@ -50,7 +50,7 @@ function addCardio(raw: DatabaseSync, exerciseId: number, startedAt: number, set
   await migrateDb(db);
   raw.exec('PRAGMA user_version = 6');
   await migrateDb(db); // sütunlar zaten var → hata vermemeli
-  assert((raw.prepare('PRAGMA user_version').get() as any).user_version === 7, 'v7 migrasyonu idempotent');
+  assert((raw.prepare('PRAGMA user_version').get() as any).user_version === DB_VERSION, 'v7 migrasyonu idempotent');
 
   // ── eski kardiyo verisi (dakika reps'te) duration_sec'e taşınır; özel kardiyo egzersizi cardio olur
   const old = new DatabaseSync(':memory:');
@@ -132,7 +132,7 @@ function addCardio(raw: DatabaseSync, exerciseId: number, startedAt: number, set
 
   // ── yedek: dışa → içe yeni sütunlar
   const backup = await exportBackup(db);
-  assert(backup.schemaVersion === 7, 'yedek şema 7');
+  assert(backup.schemaVersion === DB_VERSION, 'yedek şema güncel');
   const { db: db2, raw: raw2 } = await freshDb();
   await importBackup(db2, parseBackup(JSON.stringify(backup)));
   const s = raw2.prepare('SELECT duration_sec, distance_m FROM sets WHERE duration_sec = 1200').get() as any;

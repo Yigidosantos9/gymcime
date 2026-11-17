@@ -8,7 +8,7 @@ import { Font, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 /** iOS'ta klavye ayrı pencerede panelin üstünü kapatır; yüksekliği kadar boşluk bırak (Android zaten pencereyi küçültüyor). */
-function useKeyboardSpace() {
+export function useKeyboardSpace() {
   const insets = useSafeAreaInsets();
   const [h, setH] = useState(0);
   useEffect(() => {
@@ -23,11 +23,11 @@ function useKeyboardSpace() {
   return h;
 }
 
-function NameForm({ close, initial, confirmLabel, onSubmit }: { close: () => void; initial: string; confirmLabel: string; onSubmit: (name: string) => void }) {
+function NameForm({ close, initial, confirmLabel, onSubmit, placeholder, hint, allowEmpty }: { close: () => void; initial: string; confirmLabel: string; onSubmit: (name: string) => void; placeholder: string; hint: string; allowEmpty: boolean }) {
   const t = useTheme();
   const space = useKeyboardSpace();
   const [name, setName] = useState(initial);
-  const ok = name.trim().length > 0;
+  const ok = allowEmpty || name.trim().length > 0;
   const submit = () => {
     if (!ok) return;
     Keyboard.dismiss();
@@ -42,14 +42,14 @@ function NameForm({ close, initial, confirmLabel, onSubmit }: { close: () => voi
         onChangeText={setName}
         autoFocus
         maxLength={40}
-        placeholder="Sırt günü"
+        placeholder={placeholder}
         placeholderTextColor={t.textMuted}
         returnKeyType="done"
         onSubmitEditing={submit}
         style={[styles.input, { color: t.text, backgroundColor: t.surfacePressed, borderColor: t.border }]}
       />
       <T variant="caption" muted>
-        Örnekler: Sırt günü, Göğüs + Triceps, Bacak
+        {hint}
       </T>
       <Button title={confirmLabel} icon="check" onPress={submit} disabled={!ok} />
     </View>
@@ -57,10 +57,20 @@ function NameForm({ close, initial, confirmLabel, onSubmit }: { close: () => voi
 }
 
 /** Rutin adı soran sheet (metin girişli). Onaylanınca `onSubmit(ad)` sheet kapandıktan sonra çağrılır. */
-export function askRoutineName(sheet: ReturnType<typeof useSheet>, opts: { title?: string; initial?: string; confirmLabel?: string; onSubmit: (name: string) => void }) {
+export function askRoutineName(sheet: ReturnType<typeof useSheet>, opts: { title?: string; initial?: string; confirmLabel?: string; placeholder?: string; hint?: string; /** boş metinle de onaylanabilsin (ör. notu silmek için) */ allowEmpty?: boolean; onSubmit: (name: string) => void }) {
   sheet.custom({
     title: opts.title ?? 'Rutin adı',
-    render: (close) => <NameForm close={close} initial={opts.initial ?? ''} confirmLabel={opts.confirmLabel ?? 'Kaydet'} onSubmit={opts.onSubmit} />,
+    render: (close) => (
+      <NameForm
+        close={close}
+        initial={opts.initial ?? ''}
+        confirmLabel={opts.confirmLabel ?? 'Kaydet'}
+        onSubmit={opts.onSubmit}
+        placeholder={opts.placeholder ?? 'Sırt günü'}
+        hint={opts.hint ?? 'Örnekler: Sırt günü, Göğüs + Triceps, Bacak'}
+        allowEmpty={opts.allowEmpty ?? false}
+      />
+    ),
   });
 }
 

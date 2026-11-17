@@ -60,6 +60,8 @@ const ICONS = {
   photo: ['photo.fill', 'image'],
   star: ['star', 'star'],
   starFill: ['star.fill', 'star'],
+  grip: ['line.3.horizontal', 'drag_handle'],
+  copy: ['doc.on.doc', 'content_copy'],
   calendarDay: ['calendar.day.timeline.left', 'calendar_today'],
 } as const satisfies Record<string, readonly [SFSymbol, AndroidSymbol]>;
 

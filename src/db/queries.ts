@@ -26,6 +26,7 @@ import {
 } from '@/lib/cardio';
 import { baseRest, restAfter, type SetType } from '@/lib/rest';
 import { startOfWeek } from '@/lib/format';
+import { diffRoutine, type RoutineDiff } from '@/lib/routine-diff';
 
 import { applyDefaultRest } from './migrate';
 import { ROUTINE_TEMPLATES } from './seed';
@@ -68,6 +69,8 @@ export type RoutineSummary = {
   exercise_count: number;
   muscles: string | null;
   last_done: number | null;
+  sort_order: number;
+  created_at: number;
 };
 
 export type RoutineItem = {
@@ -167,6 +170,9 @@ export type Profile = {
   setStyle: SetStyle;
   /** kas grubu başına önerilen dinlenme (gün) */
   recoveryDays: number;
+  /** plaka hesaplayıcı: bar ağırlığı (kg) ve salondaki plakalar (kg, her tarafa) */
+  barWeight: number;
+  plates: number[];
 };
 
 // ───────────────────────── Ayarlar / profil ─────────────────────────
@@ -201,6 +207,8 @@ export async function getProfile(db: SQLiteDatabase): Promise<Profile | null> {
     incMachine: p.incMachine ?? 2.5,
     setStyle: p.setStyle ?? 'auto',
     recoveryDays: p.recoveryDays ?? 2,
+    barWeight: p.barWeight ?? 20,
+    plates: Array.isArray(p.plates) && p.plates.every((x) => typeof x === 'number' && x > 0) ? p.plates : [25, 20, 15, 10, 5, 2.5, 1.25],
   };
 }
 
@@ -239,12 +247,12 @@ export async function createExercise(db: SQLiteDatabase, name: string, muscle: s
 
 export async function listRoutines(db: SQLiteDatabase) {
   return db.getAllAsync<RoutineSummary>(`
-    SELECT r.id, r.name,
+    SELECT r.id, r.name, r.sort_order, r.created_at,
       (SELECT COUNT(*) FROM routine_exercises re WHERE re.routine_id = r.id) AS exercise_count,
       (SELECT GROUP_CONCAT(DISTINCT e.muscle) FROM routine_exercises re JOIN exercises e ON e.id = re.exercise_id WHERE re.routine_id = r.id) AS muscles,
       (SELECT MAX(w.started_at) FROM workouts w WHERE w.routine_id = r.id AND w.finished_at IS NOT NULL) AS last_done
     FROM routines r
-    ORDER BY r.created_at
+    ORDER BY r.sort_order, r.id
   `);
 }
 
@@ -265,7 +273,11 @@ export async function saveRoutine(db: SQLiteDatabase, id: number | null, name: s
   let routineId = id;
   await db.withTransactionAsync(async () => {
     if (routineId == null) {
-      const res = await db.runAsync('INSERT INTO routines (name, created_at) VALUES (?, ?)', name, Date.now());
+      const res = await db.runAsync(
+        'INSERT INTO routines (name, created_at, sort_order) VALUES (?, ?, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM routines))',
+        name,
+        Date.now(),
+      );
       routineId = res.lastInsertRowId;
     } else {
       await db.runAsync('UPDATE routines SET name = ? WHERE id = ?', name, routineId);
@@ -289,7 +301,39 @@ export async function saveRoutine(db: SQLiteDatabase, id: number | null, name: s
 }
 
 export async function deleteRoutine(db: SQLiteDatabase, id: number) {
+  // week_plan.routine_id → ON DELETE SET NULL (o gün dinlenme günü olur)
   await db.runAsync('DELETE FROM routines WHERE id = ?', id);
+}
+
+/** Rutini kopyalar: "<ad> (kopya)", aynı egzersizler ve ayarlar; listenin sonuna eklenir. Yeni id döner (rutin yoksa null). */
+export async function duplicateRoutine(db: SQLiteDatabase, id: number): Promise<number | null> {
+  const r = await getRoutine(db, id);
+  if (!r) return null;
+  return saveRoutine(db, null, `${r.name} (kopya)`, r.items);
+}
+
+/** Rutin sırasını elle belirler (`ids` yeni sıra; listede olmayanlar sona kalır). */
+export async function reorderRoutines(db: SQLiteDatabase, ids: number[]) {
+  await db.withTransactionAsync(async () => {
+    for (let i = 0; i < ids.length; i++) await db.runAsync('UPDATE routines SET sort_order = ? WHERE id = ?', i + 1, ids[i]);
+  });
+}
+
+export type RoutineSort = 'manual' | 'recent' | 'name' | 'created';
+
+/** Rutin listesini seçilen sıralamaya göre dizer (saf). `manual` veritabanı sırasıdır. */
+export function sortRoutines<T extends { name: string; last_done: number | null; created_at: number; sort_order: number; id: number }>(list: T[], by: RoutineSort): T[] {
+  const copy = [...list];
+  switch (by) {
+    case 'recent':
+      return copy.sort((a, b) => (b.last_done ?? 0) - (a.last_done ?? 0) || a.sort_order - b.sort_order || a.id - b.id);
+    case 'name':
+      return copy.sort((a, b) => a.name.localeCompare(b.name, 'tr') || a.id - b.id);
+    case 'created':
+      return copy.sort((a, b) => b.created_at - a.created_at || b.id - a.id);
+    default:
+      return copy.sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
+  }
 }
 
 export async function createRoutinesFromTemplate(db: SQLiteDatabase, key: keyof typeof ROUTINE_TEMPLATES) {
@@ -750,7 +794,10 @@ export async function finishWorkout(db: SQLiteDatabase, workoutId: number): Prom
     return false;
   }
   const now = Date.now();
+  // rutinden başlayan antrenman: yapıyı silme adımından ÖNCE sakla (bkz. getRoutineDiff)
+  const shape = workout.routine_id != null ? JSON.stringify(await workoutShape(db, workoutId, false)) : null;
   await db.withTransactionAsync(async () => {
+    await db.runAsync('UPDATE workouts SET routine_shape = ? WHERE id = ?', shape, workoutId);
     await db.runAsync(
       `DELETE FROM sets WHERE done = 0 AND workout_exercise_id IN (SELECT id FROM workout_exercises WHERE workout_id = ?)`,
       workoutId,
@@ -1212,7 +1259,7 @@ export async function deleteAllData(db: SQLiteDatabase) {
   await db.withTransactionAsync(async () => {
     await db.execAsync(`
       DELETE FROM sets; DELETE FROM workout_exercises; DELETE FROM workouts;
-      DELETE FROM routine_exercises; DELETE FROM routines; DELETE FROM body_weights;
+      DELETE FROM week_plan; DELETE FROM routine_exercises; DELETE FROM routines; DELETE FROM body_weights;
       DELETE FROM settings; DELETE FROM exercise_guides; DELETE FROM food_logs; DELETE FROM foods; DELETE FROM exercises WHERE is_custom = 1;
     `);
     // kalan (seed) egzersizlerin özelleştirilmiş dinlenme süreleri varsayılana dönsün
@@ -1289,12 +1336,10 @@ export async function muscleLastTrained(db: SQLiteDatabase) {
 
 // ───────────────────────── Antrenmandan rutin ─────────────────────────
 
-/**
- * Bitmiş bir antrenmandan rutin oluşturur: egzersiz sırası, çalışma seti sayısı (ısınma hariç,
- * yalnızca tamamlananlar), tekrar aralığı ve o antrenmandaki dinlenme süresi korunur.
- * Hiç tamamlanmış çalışma seti olan egzersiz yoksa rutin oluşturulmaz (null döner).
- */
-export async function createRoutineFromWorkout(db: SQLiteDatabase, workoutId: number, name: string): Promise<number | null> {
+type WorkoutShapeRow = RoutineItem & { exercise_id: number };
+
+/** Antrenmanın egzersizleri (sıralı); `onlyDone` true ise yalnızca tamamlanan çalışma setleri sayılır. */
+async function workoutShape(db: SQLiteDatabase, workoutId: number, onlyDone: boolean): Promise<WorkoutShapeRow[]> {
   const rows = await db.getAllAsync<{
     exercise_id: number;
     name: string;
@@ -1307,12 +1352,12 @@ export async function createRoutineFromWorkout(db: SQLiteDatabase, workoutId: nu
     work_sets: number;
   }>(
     `SELECT we.exercise_id, e.name, e.muscle, e.equipment, e.kind, we.rep_min, we.rep_max, we.rest_seconds,
-       (SELECT COUNT(*) FROM sets s WHERE s.workout_exercise_id = we.id AND s.done = 1 AND s.set_type NOT IN ('warmup','drop')) AS work_sets
+       (SELECT COUNT(*) FROM sets s WHERE s.workout_exercise_id = we.id AND ${onlyDone ? 's.done = 1 AND ' : ''}s.set_type NOT IN ('warmup','drop')) AS work_sets
      FROM workout_exercises we JOIN exercises e ON e.id = we.exercise_id
      WHERE we.workout_id = ? ORDER BY we.position`,
     workoutId,
   );
-  const items: RoutineItem[] = rows
+  return rows
     .filter((r) => r.work_sets > 0)
     .map((r) => ({
       exercise_id: r.exercise_id,
@@ -1325,8 +1370,52 @@ export async function createRoutineFromWorkout(db: SQLiteDatabase, workoutId: nu
       rep_max: r.rep_max,
       rest_seconds: r.rest_seconds,
     }));
+}
+
+/**
+ * Bitmiş bir antrenmandan rutin oluşturur: egzersiz sırası, çalışma seti sayısı (ısınma hariç,
+ * yalnızca tamamlananlar), tekrar aralığı ve o antrenmandaki dinlenme süresi korunur.
+ * Hiç tamamlanmış çalışma seti olan egzersiz yoksa rutin oluşturulmaz (null döner).
+ */
+export async function createRoutineFromWorkout(db: SQLiteDatabase, workoutId: number, name: string): Promise<number | null> {
+  const items = await workoutShape(db, workoutId, true);
   if (items.length === 0) return null;
   return saveRoutine(db, null, name.trim() || 'Yeni rutin', items);
+}
+
+/** Bitişte saklanan antrenman yapısı (eski/rutinsiz antrenmanlarda null). */
+async function storedShape(db: SQLiteDatabase, workoutId: number): Promise<{ routineId: number; items: RoutineItem[] } | null> {
+  const w = await db.getFirstAsync<{ routine_id: number | null; routine_shape: string | null }>('SELECT routine_id, routine_shape FROM workouts WHERE id = ?', workoutId);
+  if (!w?.routine_id || !w.routine_shape) return null;
+  try {
+    const items = JSON.parse(w.routine_shape) as RoutineItem[];
+    return Array.isArray(items) ? { routineId: w.routine_id, items } : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rutinden başlatılan antrenmanın yapısını (bitiş anında saklanan) rutinin şu anki haliyle karşılaştırır.
+ * Set sayısı = ısınma/drop hariç tüm çalışma setleri (yapılmamış olanlar dahil → bir seti/egzersizi atlamak değişiklik sayılmaz;
+ * elle set/egzersiz eklemek ya da silmek sayılır). Rutinsiz antrenman, silinmiş rutin ya da yapısı saklanmamış eski antrenman → null.
+ */
+export async function getRoutineDiff(db: SQLiteDatabase, workoutId: number): Promise<(RoutineDiff & { routineId: number; routineName: string }) | null> {
+  const stored = await storedShape(db, workoutId);
+  if (!stored) return null;
+  const routine = await getRoutine(db, stored.routineId);
+  if (!routine) return null;
+  const diff = diffRoutine(routine.items, stored.items);
+  return { ...diff, routineId: routine.id, routineName: routine.name };
+}
+
+/** Antrenmanın yapısını rutine yazar (ad ve diğer ayarlar korunur). Güncellenen rutin id'si; rutin yok/yapı boşsa null. */
+export async function applyWorkoutToRoutine(db: SQLiteDatabase, workoutId: number): Promise<number | null> {
+  const stored = await storedShape(db, workoutId);
+  if (!stored || stored.items.length === 0) return null;
+  const routine = await getRoutine(db, stored.routineId);
+  if (!routine) return null;
+  return saveRoutine(db, routine.id, routine.name, stored.items);
 }
 
 /**
@@ -1356,4 +1445,114 @@ export async function cardioPrDetails(db: SQLiteDatabase, workoutId: number): Pr
     out.push({ name: p.name, texts: texts.length ? texts : ['Yeni rekor'] });
   }
   return out;
+}
+
+// ───────────────────────── Haftalık plan ─────────────────────────
+
+export type WeekPlanDay = {
+  /** 0 = Pazartesi … 6 = Pazar */
+  weekday: number;
+  /** null → dinlenme günü */
+  routine_id: number | null;
+  routine_name: string | null;
+  /** rutinin çalıştırdığı kaslar */
+  muscles: string[];
+  note: string | null;
+};
+
+/** 7 günün tamamı (kayıt olmayan gün = dinlenme). */
+export async function getWeekPlan(db: SQLiteDatabase): Promise<WeekPlanDay[]> {
+  const rows = await db.getAllAsync<{ weekday: number; routine_id: number | null; note: string | null; name: string | null; muscles: string | null }>(
+    `SELECT p.weekday, p.routine_id, p.note, r.name,
+       (SELECT GROUP_CONCAT(DISTINCT e.muscle) FROM routine_exercises re JOIN exercises e ON e.id = re.exercise_id WHERE re.routine_id = r.id) AS muscles
+     FROM week_plan p LEFT JOIN routines r ON r.id = p.routine_id`,
+  );
+  const by = new Map(rows.map((r) => [r.weekday, r]));
+  return Array.from({ length: 7 }, (_, weekday) => {
+    const r = by.get(weekday);
+    return {
+      weekday,
+      routine_id: r?.routine_id ?? null,
+      routine_name: r?.name ?? null,
+      muscles: r?.muscles ? r.muscles.split(',') : [],
+      note: r?.note ?? null,
+    };
+  });
+}
+
+async function writeWeekDay(db: SQLiteDatabase, weekday: number, routineId: number | null, note: string | null) {
+  if (routineId == null && !note) {
+    await db.runAsync('DELETE FROM week_plan WHERE weekday = ?', weekday);
+    return;
+  }
+  await db.runAsync(
+    'INSERT INTO week_plan (weekday, routine_id, note) VALUES (?, ?, ?) ON CONFLICT(weekday) DO UPDATE SET routine_id = excluded.routine_id, note = excluded.note',
+    weekday,
+    routineId,
+    note,
+  );
+}
+
+/** Günün rutinini ayarlar (null = dinlenme günü); gün notu korunur. */
+export async function setWeekPlanRoutine(db: SQLiteDatabase, weekday: number, routineId: number | null) {
+  const cur = await db.getFirstAsync<{ note: string | null }>('SELECT note FROM week_plan WHERE weekday = ?', weekday);
+  await writeWeekDay(db, weekday, routineId, cur?.note ?? null);
+}
+
+/** Gün notunu ayarlar (boş → siler); rutin korunur. */
+export async function setWeekPlanNote(db: SQLiteDatabase, weekday: number, note: string | null) {
+  const cur = await db.getFirstAsync<{ routine_id: number | null }>('SELECT routine_id FROM week_plan WHERE weekday = ?', weekday);
+  await writeWeekDay(db, weekday, cur?.routine_id ?? null, note?.trim() ? note.trim() : null);
+}
+
+/** 7 günlük rutin atamasını (null = dinlenme) tek transaction'da uygular; notlar korunur. */
+export async function applyWeekAssignments(db: SQLiteDatabase, routineIds: (number | null)[]) {
+  await db.withTransactionAsync(async () => {
+    for (let d = 0; d < 7; d++) await setWeekPlanRoutine(db, d, routineIds[d] ?? null);
+  });
+}
+
+export async function clearWeekPlan(db: SQLiteDatabase) {
+  await db.runAsync('DELETE FROM week_plan');
+}
+
+/**
+ * Şablondaki rutinleri (ad eşleşirse mevcut olanı, yoksa yenisini) hazırlar. İdempotent: tekrar çağrılınca kopya üretmez.
+ * Dönen harita: şablon rutin adı → rutin id.
+ */
+export async function ensureTemplateRoutines(db: SQLiteDatabase, key: keyof typeof ROUTINE_TEMPLATES): Promise<Map<string, number>> {
+  const exs = await db.getAllAsync<{ id: number; slug: string }>('SELECT id, slug FROM exercises WHERE slug IS NOT NULL');
+  const bySlug = new Map(exs.map((s) => [s.slug, s.id]));
+  const existing = await db.getAllAsync<{ id: number; name: string }>('SELECT id, name FROM routines ORDER BY sort_order, id');
+  const out = new Map<string, number>();
+  for (const tpl of ROUTINE_TEMPLATES[key]) {
+    const found = existing.find((r) => r.name.toLocaleLowerCase('tr') === tpl.name.toLocaleLowerCase('tr'));
+    if (found) {
+      out.set(tpl.name, found.id);
+      continue;
+    }
+    const items: RoutineItem[] = tpl.items
+      .filter(([slug]) => bySlug.has(slug))
+      .map(([slug, sets, min, max]) => ({
+        exercise_id: bySlug.get(slug)!,
+        name: '',
+        muscle: '',
+        equipment: '',
+        target_sets: sets,
+        rep_min: min,
+        rep_max: max,
+        rest_seconds: null,
+      }));
+    out.set(tpl.name, await saveRoutine(db, null, tpl.name, items));
+  }
+  return out;
+}
+
+/** Bitmiş antrenmanların (başlangıç zamanı + rutin) ay aralığı için listesi — takvim görünümü. */
+export async function workoutsBetween(db: SQLiteDatabase, from: number, to: number) {
+  return db.getAllAsync<{ id: number; name: string; routine_id: number | null; started_at: number }>(
+    'SELECT id, name, routine_id, started_at FROM workouts WHERE finished_at IS NOT NULL AND started_at >= ? AND started_at < ? ORDER BY started_at',
+    from,
+    to,
+  );
 }

@@ -1,10 +1,12 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import Animated, { FadeInDown, LinearTransition } from 'react-native-reanimated';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { BackHandler, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
+import Animated, { useAnimatedRef, useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 
 import { MuscleIcon } from '@/components/body-map';
+import { DragList } from '@/components/drag-list';
+import { HeaderBack } from '@/components/header-back';
 import { Icon } from '@/components/icon';
 import { useSheet } from '@/components/sheet';
 import { Button, Card, IconButton, PressableScale, T } from '@/components/ui';
@@ -17,6 +19,14 @@ import { pickerStore } from '@/lib/picker-store';
 import { formatRest, REST_PRESETS } from '@/lib/rest';
 import { beginWorkout } from '@/lib/start-workout';
 import { leave } from '@/lib/nav';
+import { syncReminders } from '@/lib/reminder-io';
+
+/** Düzenleme sırasındaki kalem: kararlı bir anahtar (sürükle-bırak ve değiştirme için). */
+type Draft = RoutineItem & { uid: string };
+let uidCounter = 0;
+const withUid = (it: RoutineItem): Draft => ({ ...it, uid: `d${++uidCounter}` });
+const serialize = (name: string, items: RoutineItem[]) =>
+  JSON.stringify([name.trim(), items.map((i) => [i.exercise_id, i.target_sets, i.rep_min, i.rep_max, i.rest_seconds ?? null])]);
 
 export default function RoutineEditor() {
   const t = useTheme();
@@ -25,7 +35,21 @@ export default function RoutineEditor() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const isNew = id === 'new';
   const [name, setName] = useState('');
-  const [items, setItems] = useState<RoutineItem[]>([]);
+  const [items, setItems] = useState<Draft[]>([]);
+  /** yüklenen/kaydedilen halin özeti; farklıysa kaydedilmemiş değişiklik var */
+  const [snap, setSnap] = useState<string | null>(isNew ? serialize('', []) : null);
+  const [dragging, setDragging] = useState(false);
+  /** egzersiz değiştirme: hangi kalem için seçici açıldı */
+  const replaceUid = useRef<string | null>(null);
+  const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  const scrollY = useSharedValue(0);
+  const maxScrollY = useSharedValue(0);
+  const contentH = useRef(0);
+  const viewH = useRef(0);
+  const updateMax = () => maxScrollY.set(Math.max(0, contentH.current - viewH.current));
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.set(e.contentOffset.y);
+  });
   const [loaded, setLoaded] = useState(isNew);
   const [profileRest, setProfileRest] = useState(90);
 
@@ -35,7 +59,10 @@ export default function RoutineEditor() {
     getRoutine(db, Number(id)).then((r) => {
       if (r) {
         setName(r.name);
-        setItems(r.items);
+        setItems(r.items.map(withUid));
+        setSnap(serialize(r.name, r.items));
+      } else {
+        setSnap(serialize('', []));
       }
       setLoaded(true);
     });
@@ -44,13 +71,16 @@ export default function RoutineEditor() {
   useFocusEffect(
     useCallback(() => {
       const ids = pickerStore.consume();
-      if (!ids) return;
+      if (!ids) {
+        replaceUid.current = null; // seçici iptal edildi
+        return;
+      }
       (async () => {
-        const added: RoutineItem[] = [];
+        const added: Draft[] = [];
         for (const exId of ids) {
           const e = await getExercise(db, exId);
           if (e) {
-            added.push({
+            added.push(withUid({
               exercise_id: e.id,
               name: e.name,
               muscle: e.muscle,
@@ -61,10 +91,24 @@ export default function RoutineEditor() {
               rest_seconds: null,
               default_rest: e.rest_seconds,
               kind: e.kind,
-            });
+            }));
           }
         }
-        setItems((prev) => [...prev, ...added]);
+        const target = replaceUid.current;
+        replaceUid.current = null;
+        if (target && added.length > 0) {
+          // değiştir: ilk seçilen, eski egzersizin yerine geçer (set/tekrar/dinlenme ayarları korunur); fazlası sona eklenir
+          const [first, ...rest] = added;
+          setItems((prev) =>
+            prev.map((it) =>
+              it.uid === target
+                ? { ...it, exercise_id: first.exercise_id, name: first.name, muscle: first.muscle, equipment: first.equipment, default_rest: first.default_rest, kind: first.kind, id: undefined }
+                : it,
+            ).concat(rest),
+          );
+        } else {
+          setItems((prev) => [...prev, ...added]);
+        }
       })();
     }, [db]),
   );
@@ -73,16 +117,16 @@ export default function RoutineEditor() {
     haptic.tap();
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...patch } : it)));
   };
-  const move = (idx: number, dir: -1 | 1) => {
-    const j = idx + dir;
-    if (j < 0 || j >= items.length) return;
-    haptic.tap();
+  const reorder = useCallback((from: number, to: number) => {
     setItems((prev) => {
       const copy = [...prev];
-      [copy[idx], copy[j]] = [copy[j], copy[idx]];
+      const [moved] = copy.splice(from, 1);
+      copy.splice(to, 0, moved);
       return copy;
     });
-  };
+  }, []);
+
+  const dirty = loaded && snap != null && serialize(name, items) !== snap;
 
   const save = async () => {
     if (!name.trim()) {
@@ -91,9 +135,41 @@ export default function RoutineEditor() {
       return;
     }
     await saveRoutine(db, isNew ? null : Number(id), name.trim(), items);
+    setSnap(serialize(name, items));
+    syncReminders(db); // bildirimlerdeki rutin adı güncel kalsın
     haptic.success();
     leave();
   };
+
+  /** Geri: kaydedilmemiş değişiklik varsa sheet sor. */
+  const guardedLeave = () => {
+    if (!dirty) {
+      leave();
+      return;
+    }
+    sheet.actions({
+      title: 'Kaydedilmemiş değişiklikler',
+      message: 'Çıkarsan yaptığın değişiklikler kaybolur.',
+      cancelLabel: 'Düzenlemeye devam et',
+      actions: [
+        { label: 'Kaydet', icon: 'check', style: 'primary', onPress: save },
+        { label: 'Vazgeç, kaydetme', icon: 'close', style: 'destructive', onPress: leave },
+      ],
+    });
+  };
+
+  // Android geri tuşu
+  useFocusEffect(
+    useCallback(() => {
+      if (!dirty) return;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        guardedLeave();
+        return true;
+      });
+      return () => sub.remove();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dirty, name, items]),
+  );
 
   const remove = () =>
     sheet.actions({
@@ -106,6 +182,7 @@ export default function RoutineEditor() {
           style: 'destructive',
           onPress: async () => {
             await deleteRoutine(db, Number(id));
+            syncReminders(db);
             leave();
           },
         },
@@ -157,8 +234,10 @@ export default function RoutineEditor() {
       <Stack.Screen
         options={{
           title: isNew ? 'Yeni Rutin' : 'Rutini Düzenle',
+          gestureEnabled: !dirty,
+          headerLeft: () => <HeaderBack onPress={guardedLeave} />,
           headerRight: () => (
-            <PressableScale onPress={save} hitSlop={10}>
+            <PressableScale onPress={save} hitSlop={10} accessibilityRole="button" accessibilityLabel="Rutini kaydet">
               <T variant="heading" color={t.primary}>
                 Kaydet
               </T>
@@ -166,7 +245,21 @@ export default function RoutineEditor() {
           ),
         }}
       />
-      <ScrollView contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 60 }} keyboardShouldPersistTaps="handled">
+      <Animated.ScrollView
+        ref={scrollRef}
+        onScroll={onScroll}
+        onContentSizeChange={(_, h) => {
+          contentH.current = h;
+          updateMax();
+        }}
+        onLayout={(e) => {
+          viewH.current = e.nativeEvent.layout.height;
+          updateMax();
+        }}
+        scrollEventThrottle={16}
+        scrollEnabled={!dragging}
+        contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 60 }}
+        keyboardShouldPersistTaps="handled">
         <TextInput
           value={name}
           onChangeText={setName}
@@ -176,54 +269,74 @@ export default function RoutineEditor() {
         />
         <T variant="caption" muted style={{ marginBottom: Spacing.sm }}>
           {items.length} egzersiz · {items.reduce((a, i) => a + i.target_sets, 0)} set
+          {items.length > 1 ? ' · ≡ tutamacına basılı tutup sürükleyerek sırala' : ''}
         </T>
 
-        {items.map((it, idx) => {
-          const rest = it.rest_seconds ?? it.default_rest ?? profileRest;
-          const timeBased = isTimeBased(it.kind);
-          return (
-            <Animated.View key={`${it.exercise_id}-${idx}`} entering={FadeInDown} layout={LinearTransition.springify().damping(20)}>
-              <Card style={{ marginTop: Spacing.md }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
-                  <MuscleIcon muscle={it.muscle} size={40} />
-                  <View style={{ flex: 1 }}>
-                    <T variant="heading" numberOfLines={1}>
-                      {it.name}
-                    </T>
-                    <T variant="caption" secondary>
-                      {it.muscle} · {it.equipment}
-                    </T>
+        <DragList
+          data={items}
+          keyOf={(it) => it.uid}
+          onReorder={reorder}
+          scrollRef={scrollRef}
+          scrollY={scrollY}
+          maxScrollY={maxScrollY}
+          onDragChange={setDragging}
+          renderItem={(it, idx, handle) => {
+            const rest = it.rest_seconds ?? it.default_rest ?? profileRest;
+            const timeBased = isTimeBased(it.kind);
+            return (
+              <View style={{ paddingTop: Spacing.md }}>
+                <Card>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.sm }}>
+                    {items.length > 1 && handle}
+                    <MuscleIcon muscle={it.muscle} size={40} />
+                    <View style={{ flex: 1 }}>
+                      <T variant="heading" numberOfLines={1}>
+                        {it.name}
+                      </T>
+                      <T variant="caption" secondary>
+                        {it.muscle} · {it.equipment}
+                      </T>
+                    </View>
+                    <IconButton
+                      icon="swap"
+                      label="Egzersizi başka bir egzersizle değiştir"
+                      onPress={() => {
+                        replaceUid.current = it.uid;
+                        router.push('/exercise-picker');
+                      }}
+                      bg="transparent"
+                      color={t.primary}
+                      size={15}
+                    />
+                    <IconButton icon="trash" onPress={() => setItems((p) => p.filter((_, i) => i !== idx))} bg="transparent" color={t.danger} size={15} />
                   </View>
-                  <IconButton icon="chevronUp" onPress={() => move(idx, -1)} bg="transparent" color={t.textSecondary} size={14} />
-                  <IconButton icon="chevronDown" onPress={() => move(idx, 1)} bg="transparent" color={t.textSecondary} size={14} />
-                  <IconButton icon="trash" onPress={() => setItems((p) => p.filter((_, i) => i !== idx))} bg="transparent" color={t.danger} size={15} />
-                </View>
-                <View style={styles.steppers}>
-                  <Stepper label="Set" value={it.target_sets} min={1} max={10} onChange={(v) => update(idx, { target_sets: v })} />
-                  {!timeBased && (
-                    <>
-                      <Stepper label="Min tekrar" value={it.rep_min} min={1} max={it.rep_max} onChange={(v) => update(idx, { rep_min: v })} />
-                      <Stepper label="Max tekrar" value={it.rep_max} min={it.rep_min} max={50} onChange={(v) => update(idx, { rep_max: v })} />
-                    </>
+                  <View style={styles.steppers}>
+                    <Stepper label="Set" value={it.target_sets} min={1} max={10} onChange={(v) => update(idx, { target_sets: v })} />
+                    {!timeBased && (
+                      <>
+                        <Stepper label="Min tekrar" value={it.rep_min} min={1} max={it.rep_max} onChange={(v) => update(idx, { rep_min: v })} />
+                        <Stepper label="Max tekrar" value={it.rep_max} min={it.rep_min} max={50} onChange={(v) => update(idx, { rep_max: v })} />
+                      </>
+                    )}
+                  </View>
+                  {it.kind !== 'cardio' && (
+                    <PressableScale onPress={() => pickRest(idx)} style={[styles.restRow, { backgroundColor: t.surfaceRaised }]}>
+                      <Icon name="timer" size={14} color={t.primary} />
+                      <T variant="label" style={{ flex: 1 }}>
+                        Setler arası dinlenme
+                      </T>
+                      <T variant="label" color={t.primary} style={{ fontFamily: Font.bold }}>
+                        {formatRest(rest)}
+                        {it.rest_seconds == null ? ' · varsayılan' : ''}
+                      </T>
+                      <Icon name="chevronRight" size={12} color={t.textMuted} />
+                    </PressableScale>
                   )}
-                </View>
-                {it.kind !== 'cardio' && (
-                <PressableScale onPress={() => pickRest(idx)} style={[styles.restRow, { backgroundColor: t.surfaceRaised }]}>
-                  <Icon name="timer" size={14} color={t.primary} />
-                  <T variant="label" style={{ flex: 1 }}>
-                    Setler arası dinlenme
-                  </T>
-                  <T variant="label" color={t.primary} style={{ fontFamily: Font.bold }}>
-                    {formatRest(rest)}
-                    {it.rest_seconds == null ? ' · varsayılan' : ''}
-                  </T>
-                  <Icon name="chevronRight" size={12} color={t.textMuted} />
-                </PressableScale>
-                )}
-              </Card>
-            </Animated.View>
-          );
-        })}
+                </Card>
+              </View>
+            );
+          }}
+        />
 
         <Button title="Egzersiz ekle" icon="addCircle" kind="secondary" onPress={() => router.push('/exercise-picker')} style={{ marginTop: Spacing.lg }} />
         {!isNew && (
@@ -233,6 +346,7 @@ export default function RoutineEditor() {
               icon="play"
               onPress={async () => {
                 await saveRoutine(db, Number(id), name.trim() || 'Rutin', items);
+                setSnap(serialize(name || 'Rutin', items));
                 beginWorkout(db, Number(id), sheet);
               }}
               style={{ marginTop: Spacing.sm }}
@@ -240,7 +354,7 @@ export default function RoutineEditor() {
             <Button title="Rutini sil" kind="danger" icon="trash" onPress={remove} style={{ marginTop: Spacing.xl }} />
           </>
         )}
-      </ScrollView>
+      </Animated.ScrollView>
     </KeyboardAvoidingView>
   );
 }

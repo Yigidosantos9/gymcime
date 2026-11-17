@@ -211,7 +211,7 @@ const pr = (raw: DatabaseSync, id: number) => (raw.prepare('SELECT is_pr FROM se
   {
     const { raw, db } = await freshDb();
     const bench = await exId(db, 'bench');
-    await q.saveProfile(db, { name: 'Test', goal: 'Kas kazanmak', experience: 'Orta', daysPerWeek: 4, restSeconds: 90, soundOn: true, hapticOn: true, incBarbell: 2.5, incDumbbell: 2, incMachine: 2.5, setStyle: 'auto', recoveryDays: 2 });
+    await q.saveProfile(db, { name: 'Test', goal: 'Kas kazanmak', experience: 'Orta', daysPerWeek: 4, restSeconds: 90, soundOn: true, hapticOn: true, incBarbell: 2.5, incDumbbell: 2, incMachine: 2.5, setStyle: 'auto', recoveryDays: 2, barWeight: 20, plates: [25, 20, 15, 10, 5, 2.5, 1.25] });
     await q.setSetting(db, 'anthropic_api_key', 'sk-ant-SECRET-SHOULD-NOT-LEAK');
     await q.createRoutinesFromTemplate(db, 'upperlower');
     const custom = await q.createExercise(db, 'Özel Hareket', 'Sırt', 'Kablo');
@@ -287,7 +287,7 @@ const pr = (raw: DatabaseSync, id: number) => (raw.prepare('SELECT is_pr FROM se
     inj.tables.body_weights = [{ id: 1, measured_at: 1, weight: 80, 'weight); DROP TABLE sets; --': 1 }];
     await importBackup(db, parseBackup(JSON.stringify(inj)));
     assert((raw.prepare('SELECT COUNT(*) n FROM body_weights').get() as any).n === 1 && (raw.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name = 'sets'").get() as any).n === 1, 'bilinmeyen sütun adı yok sayıldı (enjeksiyon yok)');
-    assert(BACKUP_TABLES.length === 11, 'tüm tablolar yedekte');
+    assert(BACKUP_TABLES.length === 12, 'tüm tablolar yedekte');
     // her tablo gerçekten yedek kapsamında mı (şemaya yeni tablo eklenirse test uyarır)
     const real = (raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as any[]).map((r) => r.name).sort();
     assert(JSON.stringify(real) === JSON.stringify([...BACKUP_TABLES].sort()), `şemadaki her tablo yedekte (${real.join(',')})`);

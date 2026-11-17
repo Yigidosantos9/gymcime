@@ -223,7 +223,7 @@ src/app/exercise/[id].tsx.
 > **Not (Görev 2.8 tamamlandı):** `src/app/exercises.tsx` kütüphane (arama + kas/tür çipleri, görsel önizleme, özel egzersiz oluşturma); saf mantık `src/lib/exercise-library.ts` (`filterExercises`, picker da kullanıyor); ortak form `src/components/create-exercise.tsx`. Picker satırlarında "i" butonu → detay. Giriş noktaları: Rutinler sekmesi butonu, ana sayfa başlığında arama ikonu. Egzersiz detayında "Nasıl yapılır" + AI kartı üstte, ardından dinlenme/geçmiş; geçmişsizde "Henüz yapmadın".
 > `HomeBack` ("‹ Bugün") artık dört sekmede her zaman görünür (`fromHome`/`?from=index` kaldırıldı); `backBehavior="initialRoute"`. Ana sayfa "+" sheet'ine "Yeni rutin oluştur" eklendi; yeni rutin kaydedilince `leave()` ile listeye/önceki sekmeye dönülür (eskiden yeni rutin sayfasına replace ediyordu). Test: `tests/library.test.ts` (arama/filtre, geçmişsiz sorgular, saveRoutine → startWorkout). Simülatörde kütüphane, Pull-Up detayı ve "‹ Bugün" görüldü; tıklama olmadığı için rutin oluşturma akışı UI'dan ve picker "i" butonu cihazda elle denenmeli.
 
-## Görev 2.9 — Rutin düzenleme netliği + antrenmandan rutini güncelleme + plaka hesaplayıcı + hatırlatıcılar  `[ ]`
+## Görev 2.9 — Rutin düzenleme netliği + antrenmandan rutini güncelleme + plaka hesaplayıcı + hatırlatıcılar  `[x]`
 1. **Rutin düzenleme görünür olsun** (düzenleyici `src/app/routine/[id].tsx` zaten var; karta dokununca açılıyor ama bu belli değil):
    - Rutin kartında net **"Düzenle"** butonu (kalem ikonu) + "Başlat"; karta uzun basınca sheet: Düzenle / Kopyala / Başlat / Sil.
    - **Kopyala**: "Sırt günü (kopya)" adıyla aynı egzersizler/ayarlar.
@@ -240,7 +240,13 @@ src/app/exercise/[id].tsx.
    tartılma hatırlatıcısı (haftalık gün + saat), öğün kaydı hatırlatıcısı (isteğe bağlı, akşam). İzin isteme akışı, kapat/aç, planlanmış
    bildirimleri yeniden kurma (uygulama açılışında idempotent). Bildirim metinleri Türkçe.
 
-## Görev 2.10 — Haftalık planlayıcı (Pazartesi Göğüs, Salı Sırt, Çarşamba Leg day…) + takvim  `[ ]`
+> **Not (Görev 2.9 tamamlandı):** Rutin kartında "Düzenle"/"Başlat" + "⋯" ve uzun basış sheet'i (Düzenle/Kopyala/Başlat/Sil), sıralama çipleri (Elle/Son yapılan/Ad/Yeni; elle modda ↑↓), `duplicateRoutine`/`reorderRoutines`/`sortRoutines`. DB v8 = `routines.sort_order`, v10 = `workouts.routine_shape` (bitişte, yapılmamış set/egzersizler silinmeden ÖNCE saklanır → atlanan set "değişiklik" sayılmaz; v9 = week_plan).
+> Düzenleyici: sürükle-bırak (`components/drag-list.tsx`, gesture-handler v3 `usePanGesture` + reanimated, ≡ tutamacı, kenarda otomatik kaydırma, ekran okuyucu eylemleri), egzersiz değiştir (picker, ayarlar korunur), kaydedilmemiş değişiklikte geri (header/iOS kaydırma/Android geri) sheet'i. Özet ekranı "Değişiklikleri rutine kaydet" (`getRoutineDiff`/`applyWorkoutToRoutine`, saf `lib/routine-diff.ts`).
+> Plaka hesaplayıcı: `lib/plates.ts` (0,25 kg tam sayı DP — açgözlü değil, en yakın ulaşılabilir + uyarı), `components/plate-sheet.tsx`; Halter egzersizinde "kg" başlığı/⋯ menüsü; bar (20/15/10) ve plakalar Ayarlar → Plaka hesaplayıcı (`Profile.barWeight/plates`).
+> Hatırlatıcılar: `lib/reminders.ts` (saf) + `lib/reminder-io.ts` (`syncReminders`: yalnızca `gymcime-reminder:` kimlikli bildirimleri iptal edip yeniden kurar, mola bildirimine dokunmaz; izin YOKSA istemez), Ayarlar → Hatırlatıcılar (antrenman/tartılma/öğün, saat adımlayıcı, izin akışı); uygulama açılışında `ReminderBoot`.
+> Testler: `tests/routine-tools.test.ts`. Simülatörde yalnızca görüntü doğrulandı (tıklama yok): sürükle-bırak, plaka sheet'i, bildirim izni/planlama ve rutin düzenleme sheet'leri cihazda elle denenmeli (bildirimler Expo Go'da kısıtlı olabilir).
+
+## Görev 2.10 — Haftalık planlayıcı (Pazartesi Göğüs, Salı Sırt, Çarşamba Leg day…) + takvim  `[x]`
 Kullanıcı isteği: haftanın günlerine rutin ata, takvimde görünsün. (Görev 3'ün çok haftalı programından önce, sade sürüm.)
 1. **Veri:** migrasyon (sıradaki sürüm): `week_plan(weekday INTEGER PRIMARY KEY 0=Pazartesi…6=Pazar, routine_id NULL → dinlenme günü, note TEXT)`.
    Rutin silinirse o gün dinlenme olur (ON DELETE SET NULL). Yedekleme/geri yükleme yeni tabloyu kapsasın; deleteAllData temizlesin.
@@ -260,6 +266,10 @@ Kullanıcı isteği: haftanın günlerine rutin ata, takvimde görünsün. (Gör
    ("Bugün: Sırt günü 💪") planlansın; plan değişince bildirimler yeniden kurulsun.
 5. **Testler:** migrasyon idempotent, plan CRUD, rutin silinince dinlenmeye dönme, haftalık uyum hesabı (hafta başı Pazartesi, saat dilimi),
    takvim için ay günleri üretimi, toparlanma çakışma uyarısı, yedekte week_plan.
+
+> **Not (Görev 2.10 tamamlandı):** DB v9 `week_plan(weekday 0-6 CHECK, routine_id ON DELETE SET NULL, note)`; yedek/geri yükleme (BACKUP_TABLES 12) + `deleteAllData` kapsar. Saf mantık `lib/week-plan.ts` (hafta Pazartesi, `dayStatus`, `weeklyAdherence`, `monthGrid`, `recoveryConflicts` — Pazar→Pazartesi dahil, kardiyo hariç, `muscleFrequency`, şablonlar PPL 3/6 gün, Üst/Alt, Full Body). Ekran `app/week-plan.tsx` (gün sheet'i: rutin/Dinlenme/Yeni rutin, gün notu, şablonlar `ensureTemplateRoutines` idempotent, özet + çakışma uyarısı); girişler: Rutinler kartı, ana sayfa plan şeridi, Ayarlar.
+> Ana sayfa: plan şeridi (✓ yapıldı, soluk/kesikli = kaçırıldı, bugün vurgulu, "Bu hafta plan: x/y"), hero "Bugün: <rutin>" / "Bugün dinlenme günü 🌊" + "Yine de başla". Geçmiş: aylık takvim (`workoutsBetween`, rutine göre renk, planlı günler soluk, gün sheet'i). Hatırlatıcı: plan varsa yalnızca rutin atanmış günlerde "Bugün: <rutin> 💪"; plan/rutin/ayar/yedek değişince `syncReminders`.
+> Testler: `tests/week-plan.test.ts`. Kısıtlar: plan "rutin atanmış gün = antrenman günü", rutinsiz not-satırı dinlenme sayılır; takvimde bir günde birden çok antrenman varsa ilkinin adı/rengi gösterilir (köşe noktası). Simülatörde ana sayfa şeridi ve takvim görüldü; plan ekranı etkileşimleri cihazda denenmeli.
 
 ## Görev Havuzu (öncelik sırası; kullanıcı onayıyla seçilecek)
 - **Barkod okuma** (expo-camera; Open Food Facts ücretsiz API — kullanıcı verisi göndermeden ürün sorgusu) → beslenmeye hızlı ekleme.

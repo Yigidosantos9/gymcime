@@ -3,7 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { SEED_EXERCISES, seedKind } from './seed';
 
 /** Güncel şema sürümü (PRAGMA user_version). Yedek dosyaları da bu sürümü taşır. */
-export const DB_VERSION = 7;
+export const DB_VERSION = 10;
 
 /** Ağır bileşik hareketler: varsayılan 3 dk dinlenme. */
 const HEAVY = ['squat', 'front-squat', 'deadlift', 'bench', 'incline-bench', 'ohp', 'rdl', 'bb-row', 'hip-thrust', 'hack-squat', 'leg-press', 'pullup', 'dips', 'cgbp'];
@@ -51,6 +51,11 @@ export async function applySeedKinds(db: Queryable) {
   );
 }
 
+/** v8: sıralaması olmayan (sort_order = 0) rutinleri id sırasına koyar. İdempotent; transaction açmaz. */
+export async function seedRoutineOrder(db: Queryable) {
+  await db.runAsync('UPDATE routines SET sort_order = id WHERE sort_order = 0');
+}
+
 /**
  * Eski şemalı (`fromVersion`) bir yedekten gelen VERİYE, o sürümden sonraki migrasyonların
  * veri adımlarını uygular. Şema (sütun) değişiklikleri zaten güncel şemada mevcuttur. Transaction açmaz.
@@ -59,7 +64,8 @@ export async function applyDataMigrations(db: Queryable, fromVersion: number) {
   if (fromVersion < 2) await applyDefaultRest(db);
   if (fromVersion < 3) await applySeedNames(db);
   if (fromVersion < 7) await applySeedKinds(db);
-  // v4-v6: yalnızca yeni tablo/sütun; veri adımı yok
+  if (fromVersion < 8) await seedRoutineOrder(db);
+  // v4-v6, v9-v10: yalnızca yeni tablo/sütun; veri adımı yok
 }
 
 /** Yarıda kalmış bir migrasyon tekrar çalışırsa "duplicate column" hatası vermesin. */
@@ -259,6 +265,35 @@ export async function migrateDb(db: SQLiteDatabase) {
       await applySeedKinds(db);
     });
     version = 7;
+    await setVersion(db, version);
+  }
+
+  if (version < 8) {
+    // Rutinleri elle sıralama
+    await addColumn(db, 'routines', 'sort_order', 'INTEGER NOT NULL DEFAULT 0');
+    await seedRoutineOrder(db);
+    version = 8;
+    await setVersion(db, version);
+  }
+
+  if (version < 9) {
+    // Haftalık plan: gün (0 = Pazartesi … 6 = Pazar) → rutin (NULL = dinlenme günü) + not
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS week_plan (
+        weekday INTEGER PRIMARY KEY CHECK (weekday BETWEEN 0 AND 6),
+        routine_id INTEGER REFERENCES routines(id) ON DELETE SET NULL,
+        note TEXT
+      );
+    `);
+    version = 9;
+    await setVersion(db, version);
+  }
+
+  if (version < 10) {
+    // Rutinden başlayan antrenmanın bitişteki yapısı (JSON): "Değişiklikleri rutine kaydet" için
+    // (bitirirken yapılmamış setler/egzersizler silindiği için yapı bitişten ÖNCE saklanır)
+    await addColumn(db, 'workouts', 'routine_shape', 'TEXT');
+    version = 10;
     await setVersion(db, version);
   }
 }

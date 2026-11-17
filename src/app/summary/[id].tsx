@@ -11,8 +11,8 @@ import { Icon, type IconName } from '@/components/icon';
 import { askRoutineName } from '@/components/routine-name-sheet';
 import { useSheet } from '@/components/sheet';
 import { PressableScale, T } from '@/components/ui';
-import { Radius, Spacing } from '@/constants/theme';
-import { cardioPrDetails, createRoutineFromWorkout, getWorkoutSummary } from '@/db/queries';
+import { Font, Radius, Spacing } from '@/constants/theme';
+import { applyWorkoutToRoutine, cardioPrDetails, createRoutineFromWorkout, getRoutineDiff, getWorkoutSummary } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDuration, formatMinutes, formatWeight } from '@/lib/format';
@@ -28,11 +28,12 @@ export default function Summary() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data } = useDbQuery(async (db) => {
     const s = await getWorkoutSummary(db, Number(id));
-    return s ? { ...s, cardioPrs: await cardioPrDetails(db, Number(id)) } : null;
+    return s ? { ...s, cardioPrs: await cardioPrDetails(db, Number(id)), routineDiff: await getRoutineDiff(db, Number(id)) } : null;
   }, [id]);
   const db = useSQLiteContext();
   const sheet = useSheet();
   const [savedRoutine, setSavedRoutine] = useState<string | null>(null);
+  const [updatedRoutine, setUpdatedRoutine] = useState<string | null>(null);
 
   const saveAsRoutine = () => {
     if (!data) return;
@@ -49,6 +50,32 @@ export default function Summary() {
         haptic.success();
         setSavedRoutine(name);
       },
+    });
+  };
+
+  const diff = data?.routineDiff?.changed ? data.routineDiff : null;
+  const updateRoutine = () => {
+    if (!diff || !data) return;
+    sheet.actions({
+      title: `"${diff.routineName}" güncellensin mi?`,
+      message: `Bu antrenmandaki yapı rutine yazılır (egzersiz sırası, çalışma seti sayısı, tekrar aralığı):\n${diff.lines.join('\n')}`,
+      cancelLabel: 'Şimdi değil',
+      actions: [
+        {
+          label: 'Değişiklikleri rutine kaydet',
+          icon: 'check',
+          style: 'primary',
+          onPress: async () => {
+            const rid = await applyWorkoutToRoutine(db, data.workoutId);
+            if (rid == null) {
+              haptic.warning();
+              return;
+            }
+            haptic.success();
+            setUpdatedRoutine(diff.routineName);
+          },
+        },
+      ],
     });
   };
 
@@ -144,6 +171,27 @@ export default function Summary() {
               Harika, devam!
             </T>
           </PressableScale>
+          {diff && !updatedRoutine && (
+            <PressableScale onPress={updateRoutine} accessibilityLabel="Değişiklikleri rutine kaydet" style={[styles.diffBtn, { backgroundColor: t.primarySoft }]}>
+              <Icon name="edit" size={16} color={t.primary} />
+              <View style={{ flex: 1 }}>
+                <T variant="label" color={t.primary} style={{ fontFamily: Font.bold }}>
+                  Değişiklikleri rutine kaydet
+                </T>
+                <T variant="caption" secondary numberOfLines={1}>
+                  {diff.lines.join(' · ')}
+                </T>
+              </View>
+            </PressableScale>
+          )}
+          {updatedRoutine && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14 }}>
+              <Icon name="check" size={16} color={t.success} />
+              <T variant="label" color={t.success}>
+                {`“${updatedRoutine}” rutini güncellendi`}
+              </T>
+            </View>
+          )}
           {savedRoutine ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14 }}>
               <Icon name="check" size={16} color={t.success} />
@@ -204,5 +252,6 @@ const styles = StyleSheet.create({
   box: { flex: 1, borderRadius: Radius.lg, padding: Spacing.lg, alignItems: 'center', gap: 4, borderWidth: StyleSheet.hairlineWidth },
   panel: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.lg, borderRadius: Radius.lg, borderWidth: StyleSheet.hairlineWidth },
   panelCol: { gap: Spacing.sm, padding: Spacing.lg, borderRadius: Radius.lg, borderWidth: StyleSheet.hairlineWidth },
+  diffBtn: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, padding: Spacing.md, borderRadius: Radius.md, marginBottom: Spacing.sm },
   cta: { height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
 });

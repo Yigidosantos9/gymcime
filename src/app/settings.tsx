@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icon';
+import { ReminderSettingsSection } from '@/components/reminder-settings';
 import { useSheet } from '@/components/sheet';
 import { useThemeContext } from '@/components/theme-provider';
 import { Button, Card, Chip, PressableScale, SectionHeader, T } from '@/components/ui';
@@ -15,8 +16,10 @@ import { pickBackup, shareBackup } from '@/lib/backup-io';
 import { deleteAllData, getProfile, saveProfile, type Profile } from '@/db/queries';
 import { useTheme } from '@/hooks/use-theme';
 import { dayWarning, notRecommended, WEEK_DAYS } from '@/lib/goals';
+import { ALL_PLATES, BAR_OPTIONS } from '@/lib/plates';
 import { RECOVERY_OPTIONS } from '@/lib/recovery';
 import { haptic } from '@/lib/haptics';
+import { syncReminders } from '@/lib/reminder-io';
 import { formatRest } from '@/lib/rest';
 import { goHome } from '@/lib/nav';
 
@@ -59,6 +62,7 @@ export default function Settings() {
           onPress: async () => {
             await deleteAllData(db);
             await clearApiKey().catch(() => {});
+            await syncReminders(db); // ayarlar silindi → planlı bildirimler de kalkar
             haptic.warning();
             goHome();
             router.replace('/onboarding');
@@ -204,6 +208,42 @@ export default function Settings() {
         <IncRow label="Makine / Kablo" value={profile.incMachine} options={[2.5, 5, 7]} onPick={(v) => update({ incMachine: v })} />
       </Card>
 
+      <SectionHeader title="Haftalık plan" />
+      <Button title="Haftalık planı düzenle" icon="history" kind="secondary" onPress={() => router.push('/week-plan')} />
+
+      <SectionHeader title="Plaka hesaplayıcı" />
+      <Card style={{ gap: Spacing.md }}>
+        <T variant="caption" muted>
+          Halter egzersizlerinde ağırlık sütunu başlığındaki halter simgesine dokununca her tarafa takılacak plakalar hesaplanır.
+        </T>
+        <T variant="label">Bar ağırlığı</T>
+        <View style={styles.wrap}>
+          {BAR_OPTIONS.map((b) => (
+            <Chip key={b} label={`${b} kg`} active={profile.barWeight === b} onPress={() => update({ barWeight: b })} />
+          ))}
+        </View>
+        <T variant="label">Salondaki plakalar (her biri çift)</T>
+        <View style={styles.wrap}>
+          {ALL_PLATES.map((p) => {
+            const on = profile.plates.includes(p);
+            return (
+              <Chip
+                key={p}
+                label={`${String(p).replace('.', ',')} kg`}
+                active={on}
+                onPress={() => {
+                  // en az bir plaka kalsın
+                  const next = on ? profile.plates.filter((x) => x !== p) : [...profile.plates, p].sort((a, b) => b - a);
+                  if (next.length > 0) update({ plates: next });
+                }}
+              />
+            );
+          })}
+        </View>
+      </Card>
+
+      <ReminderSettingsSection />
+
       <AiSettings />
 
       <DataSettings />
@@ -262,6 +302,7 @@ function DataSettings() {
             onPress: async () => {
               try {
                 await importBackup(db, backup);
+                await syncReminders(db); // içe aktarılan ayar + plana göre bildirimleri yeniden kur
                 haptic.success();
                 goHome();
               } catch (e) {

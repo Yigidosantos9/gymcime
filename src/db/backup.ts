@@ -16,6 +16,7 @@ export const BACKUP_TABLES = [
   'exercises',
   'routines',
   'routine_exercises',
+  'week_plan',
   'workouts',
   'workout_exercises',
   'sets',

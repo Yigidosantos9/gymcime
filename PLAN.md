@@ -223,6 +223,32 @@ src/app/exercise/[id].tsx.
 > **Not (Görev 2.8 tamamlandı):** `src/app/exercises.tsx` kütüphane (arama + kas/tür çipleri, görsel önizleme, özel egzersiz oluşturma); saf mantık `src/lib/exercise-library.ts` (`filterExercises`, picker da kullanıyor); ortak form `src/components/create-exercise.tsx`. Picker satırlarında "i" butonu → detay. Giriş noktaları: Rutinler sekmesi butonu, ana sayfa başlığında arama ikonu. Egzersiz detayında "Nasıl yapılır" + AI kartı üstte, ardından dinlenme/geçmiş; geçmişsizde "Henüz yapmadın".
 > `HomeBack` ("‹ Bugün") artık dört sekmede her zaman görünür (`fromHome`/`?from=index` kaldırıldı); `backBehavior="initialRoute"`. Ana sayfa "+" sheet'ine "Yeni rutin oluştur" eklendi; yeni rutin kaydedilince `leave()` ile listeye/önceki sekmeye dönülür (eskiden yeni rutin sayfasına replace ediyordu). Test: `tests/library.test.ts` (arama/filtre, geçmişsiz sorgular, saveRoutine → startWorkout). Simülatörde kütüphane, Pull-Up detayı ve "‹ Bugün" görüldü; tıklama olmadığı için rutin oluşturma akışı UI'dan ve picker "i" butonu cihazda elle denenmeli.
 
+## Görev 2.9 — Rutin düzenleme netliği + antrenmandan rutini güncelleme + plaka hesaplayıcı + hatırlatıcılar  `[ ]`
+1. **Rutin düzenleme görünür olsun** (düzenleyici `src/app/routine/[id].tsx` zaten var; karta dokununca açılıyor ama bu belli değil):
+   - Rutin kartında net **"Düzenle"** butonu (kalem ikonu) + "Başlat"; karta uzun basınca sheet: Düzenle / Kopyala / Başlat / Sil.
+   - **Kopyala**: "Sırt günü (kopya)" adıyla aynı egzersizler/ayarlar.
+   - Düzenleyicide: egzersiz sırası için yukarı/aşağı yerine **sürükle-bırak** (react-native-gesture-handler + reanimated ile; yeni paket gerekmeden),
+     egzersizi başka bir egzersizle **değiştir** (picker ile, ayarlar korunur), kaydedilmemiş değişiklikte geri tuşunda sheet ("Kaydet / Vazgeç").
+   - Rutin listesinde sıralama (en son yapılan / ad / oluşturma) ve rutin sırasını elle değiştirme.
+2. **Antrenmandan rutini güncelle:** Rutinden başlatılan bir antrenmanda egzersiz eklendi/çıkarıldı/set sayısı değiştiyse, "Bitir" sonrası
+   özet ekranında **"Değişiklikleri rutine kaydet"** seçeneği (sheet ile onay; rutin yapısı: egzersiz sırası, çalışma seti sayısı, tekrar aralığı).
+3. **Plaka hesaplayıcı:** Antrenman ekranında halter egzersizlerinde ağırlığa dokununca/uzun basınca sheet: bar ağırlığı (20 / 15 / 10 kg, Ayarlar'dan),
+   "her tarafa: 20 + 10 + 2,5" görseli (renkli plaka çubukları), mevcut plakalar Ayarlar'dan (25/20/15/10/5/2,5/1,25). Saf fonksiyon + test
+   (ulaşılamayan ağırlıkta en yakın değer ve uyarı).
+4. **Hatırlatıcılar** (expo-notifications yerel bildirim, Expo Go'da çalışır): Ayarlar → "Hatırlatıcılar":
+   antrenman günleri (haftanın günleri + saat; o gün antrenman yapıldıysa bildirim gösterme mümkün değilse metin nötr kalsın),
+   tartılma hatırlatıcısı (haftalık gün + saat), öğün kaydı hatırlatıcısı (isteğe bağlı, akşam). İzin isteme akışı, kapat/aç, planlanmış
+   bildirimleri yeniden kurma (uygulama açılışında idempotent). Bildirim metinleri Türkçe.
+
+## Görev Havuzu (öncelik sırası; kullanıcı onayıyla seçilecek)
+- **Barkod okuma** (expo-camera; Open Food Facts ücretsiz API — kullanıcı verisi göndermeden ürün sorgusu) → beslenmeye hızlı ekleme.
+- **Su takibi** (Beslenme'de günlük bardak/ml hedefi).
+- **Superset / devre** antrenmanları (egzersizleri grupla, mola grup sonunda).
+- **Vücut ölçüleri + ilerleme fotoğrafları** (yalnızca cihazda; bel/göğüs/kol; foto karşılaştırma).
+- **Uygulama ikonu + açılış ekranı** (gymcime marka ikonu, okyanus teması) ve **development build** (Görev 5'in ön koşulu).
+- **Haftalık özet bildirimi** (Pazartesi sabahı: geçen haftanın set/kardiyo/rekor özeti — AI'sız).
+- Görev 3 (program oluşturucu), Görev 4 (AI koç), Görev 5 (native ekstralar) aşağıda.
+
 ## Görev 3 — Çok haftalı program oluşturucu  `[ ]`  (Görev 1-2 bitince)
 Program → haftalar (4–12) → günler (haftanın günleri) → rutinler; deload haftası; ana sayfada "Hafta 3 · Gün 2";
 kaçırılan gün için kaydır/atla; uyum analizi. AI ile program önerisi (anahtar gerekir; şemalı çıktı, önizleme + onay).

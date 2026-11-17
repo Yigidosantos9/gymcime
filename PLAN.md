@@ -240,6 +240,27 @@ src/app/exercise/[id].tsx.
    tartılma hatırlatıcısı (haftalık gün + saat), öğün kaydı hatırlatıcısı (isteğe bağlı, akşam). İzin isteme akışı, kapat/aç, planlanmış
    bildirimleri yeniden kurma (uygulama açılışında idempotent). Bildirim metinleri Türkçe.
 
+## Görev 2.10 — Haftalık planlayıcı (Pazartesi Göğüs, Salı Sırt, Çarşamba Leg day…) + takvim  `[ ]`
+Kullanıcı isteği: haftanın günlerine rutin ata, takvimde görünsün. (Görev 3'ün çok haftalı programından önce, sade sürüm.)
+1. **Veri:** migrasyon (sıradaki sürüm): `week_plan(weekday INTEGER PRIMARY KEY 0=Pazartesi…6=Pazar, routine_id NULL → dinlenme günü, note TEXT)`.
+   Rutin silinirse o gün dinlenme olur (ON DELETE SET NULL). Yedekleme/geri yükleme yeni tabloyu kapsasın; deleteAllData temizlesin.
+2. **Planlayıcı ekranı** `src/app/week-plan.tsx` (Stack + HeaderBack, başlık "Haftalık plan"): 7 gün satırı; her gün için rutin seç
+   (sheet: rutin listesi + "Dinlenme günü" + "Yeni rutin oluştur"), gün notu; hızlı şablonlar (PPL, Üst/Alt, Full Body — mevcut rutinlerden
+   veya ROUTINE_TEMPLATES'tan oluşturarak). Haftalık özet: kaç antrenman günü, hangi kaslar kaç kez (rutinlerin kaslarından), toparlanma
+   çakışması uyarısı (ör. aynı kas art arda iki gün; kas dinlenme süresi `profile.recoveryDays`).
+   Giriş: Rutinler sekmesinde üstte "Haftalık plan" kartı, ana sayfadaki hafta kartından, Ayarlar'dan.
+3. **Takvimde görünürlük:**
+   - Ana sayfa hafta kartı: her günün altında planlanan rutinin kısa adı/ikonu; tamamlanan gün ✓, kaçırılan planlı gün soluk/işaretli,
+     bugün vurgulu. "Sıradaki antrenman" kartı: bugün planlı rutin varsa onu "Bugün: Göğüs günü" diye gösterir (yoksa mevcut mantık),
+     bugün dinlenme günüyse "Bugün dinlenme günü 🌊" + yine de başlat seçeneği.
+   - Geçmiş sekmesi: ısı haritasının yanında/üstünde **aylık takvim görünümü** (ay değiştirme): yapılan antrenmanlar (rutin adı rengi),
+     gelecekteki günlerde haftalık plandan gelen planlı rutin (soluk), dokununca o günün antrenman(lar)ı veya planı.
+   - Haftalık uyum: "Bu hafta plan: 4/5" (planlı günlerde yapılan antrenman; rutin eşleşmese de o gün antrenman yapıldıysa sayılır).
+4. **Hatırlatıcılarla entegrasyon:** Görev 2.9'daki antrenman günü hatırlatıcısı haftalık plan varsa yalnızca planlı günlerde ve rutin adıyla
+   ("Bugün: Sırt günü 💪") planlansın; plan değişince bildirimler yeniden kurulsun.
+5. **Testler:** migrasyon idempotent, plan CRUD, rutin silinince dinlenmeye dönme, haftalık uyum hesabı (hafta başı Pazartesi, saat dilimi),
+   takvim için ay günleri üretimi, toparlanma çakışma uyarısı, yedekte week_plan.
+
 ## Görev Havuzu (öncelik sırası; kullanıcı onayıyla seçilecek)
 - **Barkod okuma** (expo-camera; Open Food Facts ücretsiz API — kullanıcı verisi göndermeden ürün sorgusu) → beslenmeye hızlı ekleme.
 - **Su takibi** (Beslenme'de günlük bardak/ml hedefi).

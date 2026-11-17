@@ -77,6 +77,7 @@ function Navigation() {
                 contentStyle: { backgroundColor: t.surface },
               }}
             />
+            <Stack.Screen name="exercises" options={{ title: 'Egzersizler', headerLeft: () => <HeaderBack /> }} />
             <Stack.Screen name="exercise/[id]" options={{ title: '', headerLeft: () => <HeaderBack /> }} />
             <Stack.Screen name="routine/[id]" options={{ title: 'Rutin', headerLeft: () => <HeaderBack /> }} />
             <Stack.Screen name="session/[id]" options={{ title: '', headerLeft: () => <HeaderBack /> }} />

@@ -90,10 +90,9 @@ export default function RoutineEditor() {
       sheet.actions({ title: 'Rutine bir isim ver', message: 'Örneğin "Push Günü" veya "Bacak".', actions: [] , cancelLabel: 'Tamam' });
       return;
     }
-    const rid = await saveRoutine(db, isNew ? null : Number(id), name.trim(), items);
+    await saveRoutine(db, isNew ? null : Number(id), name.trim(), items);
     haptic.success();
-    if (isNew) router.replace(`/routine/${rid}`);
-    else leave();
+    leave();
   };
 
   const remove = () =>

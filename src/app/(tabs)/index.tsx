@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BodyMap } from '@/components/body-map';
 import { Icon } from '@/components/icon';
 import { useSheet } from '@/components/sheet';
-import { fromHome } from '@/components/tab-back';
 import { Card, EmptyState, IconButton, PressableScale, Ring, SectionHeader, Stat, T, Tile } from '@/components/ui';
 import { Radius, Spacing } from '@/constants/theme';
 import {
@@ -91,7 +90,7 @@ export default function Home() {
           <ScrollView style={{ maxHeight: 320 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: Spacing.sm }}>
             {routines.length === 0 && (
               <T secondary style={{ textAlign: 'center', paddingVertical: Spacing.sm }}>
-                Henüz rutin yok. Rutinler sekmesinden oluşturabilirsin.
+                Henüz rutin yok. Aşağıdan oluşturabilirsin.
               </T>
             )}
             {routines.map((r) => (
@@ -120,6 +119,15 @@ export default function Home() {
           <PressableScale
             onPress={async () => {
               await close();
+              router.push('/routine/new');
+            }}
+            style={[styles.pickRow, { backgroundColor: t.surfacePressed, justifyContent: 'center' }]}>
+            <Icon name="add" size={16} color={t.text} />
+            <T variant="heading">Yeni rutin oluştur</T>
+          </PressableScale>
+          <PressableScale
+            onPress={async () => {
+              await close();
               beginWorkout(db, null, sheet);
             }}
             style={[styles.pickRow, { backgroundColor: t.primarySoft, justifyContent: 'center' }]}>
@@ -145,6 +153,7 @@ export default function Home() {
               {hello()}, {profile?.name || 'sporcu'}
             </T>
           </View>
+          <IconButton icon="search" label="Egzersiz kütüphanesi" onPress={() => router.push('/exercises')} color={t.textSecondary} />
           <IconButton icon="settings" onPress={() => router.push('/settings')} color={t.textSecondary} />
         </Animated.View>
 
@@ -270,7 +279,7 @@ export default function Home() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(180).duration(400)}>
-          <Tile icon="body" label="Son 7 gün · çalışan kaslar" onPress={() => fromHome('/progress')} style={{ marginTop: Spacing.md }}>
+          <Tile icon="body" label="Son 7 gün · çalışan kaslar" onPress={() => router.navigate('/progress')} style={{ marginTop: Spacing.md }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ flex: 1 }}>
                 <BodyMap values={muscleValues} size={150} labels={false} />
@@ -296,7 +305,7 @@ export default function Home() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(200).duration(400)}>
-          <Tile icon="moon" label={`Kas toparlanması · önerilen ${recoveryDays} gün`} onPress={() => fromHome('/progress')} style={{ marginTop: Spacing.md }}>
+          <Tile icon="moon" label={`Kas toparlanması · önerilen ${recoveryDays} gün`} onPress={() => router.navigate('/progress')} style={{ marginTop: Spacing.md }}>
             <View style={styles.recGrid}>
               {recovery.map((r) => {
                 const color = r.daysRested == null ? t.textMuted : r.ready ? t.success : t.gold;
@@ -319,7 +328,7 @@ export default function Home() {
         </Animated.View>
 
         <Animated.View entering={FadeInDown.delay(220).duration(400)} style={[styles.row, { marginTop: Spacing.md }]}>
-          <Tile icon="chart" label="Bu hafta" onPress={() => fromHome('/progress')}>
+          <Tile icon="chart" label="Bu hafta" onPress={() => router.navigate('/progress')}>
             <T variant="num">{thisWeek.sets} set</T>
             {delta != null ? (
               <T variant="caption" color={delta >= 0 ? t.success : t.danger}>
@@ -331,7 +340,7 @@ export default function Home() {
               </T>
             )}
           </Tile>
-          <Tile icon="layers" label="Toplam" onPress={() => fromHome('/history')}>
+          <Tile icon="layers" label="Toplam" onPress={() => router.navigate('/history')}>
             <T variant="num">{stats.total}</T>
             <T variant="caption" muted>
               antrenman
@@ -342,7 +351,7 @@ export default function Home() {
         {/* Rutinler */}
         {routines.length > 0 && (
           <Animated.View entering={FadeInDown.delay(260).duration(400)}>
-            <SectionHeader title="Rutinlerin" action="Tümü" onAction={() => fromHome('/routines')} />
+            <SectionHeader title="Rutinlerin" action="Tümü" onAction={() => router.navigate('/routines')} />
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -370,7 +379,7 @@ export default function Home() {
 
         {/* Son antrenman */}
         <Animated.View entering={FadeInDown.delay(300).duration(400)}>
-          <SectionHeader title="Son antrenman" action={last ? 'Geçmiş' : undefined} onAction={() => fromHome('/history')} />
+          <SectionHeader title="Son antrenman" action={last ? 'Geçmiş' : undefined} onAction={() => router.navigate('/history')} />
           {last ? (
             <PressableScale onPress={() => router.push(`/session/${last.id}`)} scaleTo={0.98}>
               <Card>

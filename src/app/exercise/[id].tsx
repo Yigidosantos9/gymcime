@@ -102,6 +102,8 @@ export default function ExerciseDetail() {
         </View>
       </View>
 
+      <ExerciseGuideCard exercise={exercise} />
+
       <PressableScale onPress={pickRest} style={[styles.restRow, { backgroundColor: t.surface, borderColor: t.border }]}>
         <Icon name="timer" size={16} color={t.primary} />
         <T variant="label" style={{ flex: 1 }}>
@@ -113,12 +115,10 @@ export default function ExerciseDetail() {
         <Icon name="chevronRight" size={12} color={t.textMuted} />
       </PressableScale>
 
-      <ExerciseGuideCard exercise={exercise} />
-
       {timeBased ? (
         cardio.length === 0 ? (
           <Card style={{ marginTop: Spacing.lg }}>
-            <EmptyState icon="chart" title="Henüz kayıt yok" text="Bu egzersizi bir antrenmanda tamamladığında geçmişin burada görünecek." />
+            <EmptyState icon="chart" title="Henüz yapmadın" text="Bu egzersizi bir antrenmanda tamamladığında geçmişin burada görünecek." />
           </Card>
         ) : (
           <>
@@ -167,7 +167,7 @@ export default function ExerciseDetail() {
         )
       ) : history.length === 0 ? (
         <Card style={{ marginTop: Spacing.lg }}>
-          <EmptyState icon="chart" title="Henüz kayıt yok" text="Bu egzersizi bir antrenmanda tamamladığında grafiklerin burada görünecek." />
+          <EmptyState icon="chart" title="Henüz yapmadın" text="Bu egzersizi bir antrenmanda tamamladığında grafiklerin burada görünecek." />
         </Card>
       ) : (
         <>

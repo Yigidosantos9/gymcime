@@ -26,7 +26,8 @@ export default function Routines() {
         <HomeBack />
         <ScreenHeader subtitle={routines ? `${routines.length} rutin` : undefined} title="Rutinler" />
 
-        <Button title="Yeni rutin oluştur" icon="add" onPress={() => router.push('/routine/new')} style={{ marginBottom: Spacing.lg }} />
+        <Button title="Yeni rutin oluştur" icon="add" onPress={() => router.push('/routine/new')} style={{ marginBottom: Spacing.sm }} />
+        <Button title="Egzersiz kütüphanesi" icon="search" kind="secondary" onPress={() => router.push('/exercises')} style={{ marginBottom: Spacing.lg }} />
 
         {routines && routines.length === 0 && (
           <Card>

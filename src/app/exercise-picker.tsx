@@ -1,25 +1,23 @@
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { FlatList, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MuscleIcon } from '@/components/body-map';
+import { CreateExerciseForm } from '@/components/create-exercise';
 import { Icon } from '@/components/icon';
 import { Button, Chip, IconButton, PressableScale, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
-import { addExercisesToWorkout, addHistoryExercise, createExercise, listExercises } from '@/db/queries';
-import { EQUIPMENT, MUSCLES } from '@/db/seed';
+import { addExercisesToWorkout, addHistoryExercise, listExercises } from '@/db/queries';
+import { MUSCLES } from '@/db/seed';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { useTheme } from '@/hooks/use-theme';
-import { EXERCISE_KINDS, type ExerciseKind } from '@/lib/cardio';
+import { filterExercises } from '@/lib/exercise-library';
 import { haptic } from '@/lib/haptics';
 import { pickerStore } from '@/lib/picker-store';
 import { formatRest } from '@/lib/rest';
 import { leave } from '@/lib/nav';
-
-const normalize = (s: string) =>
-  s.toLocaleLowerCase('tr-TR').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i');
 
 export default function ExercisePicker() {
   const t = useTheme();
@@ -30,13 +28,9 @@ export default function ExercisePicker() {
   const [muscle, setMuscle] = useState<string | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [creating, setCreating] = useState(false);
-  const [newMuscle, setNewMuscle] = useState<string>(MUSCLES[0]);
-  const [newEquip, setNewEquip] = useState<string>(EQUIPMENT[0]);
-  const [newKind, setNewKind] = useState<ExerciseKind>('strength');
 
   const filtered = useMemo(() => {
-    const nq = normalize(q.trim());
-    return (exercises ?? []).filter((e) => (!muscle || e.muscle === muscle) && (!nq || normalize(e.name).includes(nq) || normalize(e.alias ?? '').includes(nq) || normalize(e.muscle).includes(nq)));
+    return filterExercises(exercises ?? [], { q, muscle });
   }, [exercises, q, muscle]);
 
   const toggle = (id: number) => {
@@ -54,9 +48,7 @@ export default function ExercisePicker() {
     leave();
   };
 
-  const create = async () => {
-    if (!q.trim()) return;
-    const id = await createExercise(db, q, newMuscle, newEquip, newKind);
+  const onCreated = async (id: number) => {
     await reload();
     setSelected((s) => [...s, id]);
     setCreating(false);
@@ -120,47 +112,7 @@ export default function ExercisePicker() {
         }
         ListFooterComponent={
           creating ? (
-            <Animated.View entering={FadeInDown} style={[styles.createBox, { backgroundColor: t.surfaceRaised, borderColor: t.border }]}>
-              <T variant="heading">Yeni egzersiz: {q.trim()}</T>
-              <T variant="overline" secondary>
-                Tür
-              </T>
-              <View style={styles.wrap}>
-                {EXERCISE_KINDS.map((k) => (
-                  <Chip
-                    key={k.key}
-                    label={k.label}
-                    active={newKind === k.key}
-                    onPress={() => {
-                      setNewKind(k.key);
-                      if (k.key === 'cardio') setNewMuscle('Kardiyo');
-                      else if (newMuscle === 'Kardiyo') setNewMuscle(k.key === 'timed' ? 'Karın' : MUSCLES[0]);
-                      if (k.key === 'bodyweight') setNewEquip('Vücut');
-                    }}
-                  />
-                ))}
-              </View>
-              <T variant="caption" muted>
-                {EXERCISE_KINDS.find((k) => k.key === newKind)?.hint}
-              </T>
-              <T variant="overline" secondary>
-                Kas grubu
-              </T>
-              <View style={styles.wrap}>
-                {MUSCLES.map((m) => (
-                  <Chip key={m} label={m} active={newMuscle === m} onPress={() => setNewMuscle(m)} />
-                ))}
-              </View>
-              <T variant="overline" secondary>
-                Ekipman
-              </T>
-              <View style={styles.wrap}>
-                {EQUIPMENT.map((m) => (
-                  <Chip key={m} label={m} active={newEquip === m} onPress={() => setNewEquip(m)} />
-                ))}
-              </View>
-              <Button title="Oluştur ve seç" icon="check" onPress={create} />
-            </Animated.View>
+            <CreateExerciseForm name={q} submitLabel="Oluştur ve seç" onCreated={onCreated} />
           ) : undefined
         }
         renderItem={({ item }) => {
@@ -184,6 +136,7 @@ export default function ExercisePicker() {
                   {item.use_count > 0 ? ` · ${item.use_count}×` : ''}
                 </T>
               </View>
+              <IconButton icon="info" label={`${item.name} bilgisi`} onPress={() => router.push(`/exercise/${item.id}`)} bg="transparent" color={t.textSecondary} size={20} />
               <View style={[styles.check, { backgroundColor: on ? t.primary : 'transparent', borderColor: on ? t.primary : t.borderStrong }]}>
                 {on && (
                   <T variant="label" color={t.onPrimary} style={{ fontFamily: Font.heavy }}>
@@ -218,6 +171,4 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: Radius.md, marginBottom: 4, borderWidth: 1 },
   check: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   bottom: { position: 'absolute', left: 16, right: 16, bottom: 0 },
-  createBox: { padding: Spacing.lg, borderRadius: Radius.lg, borderWidth: StyleSheet.hairlineWidth, gap: Spacing.md, marginTop: Spacing.md },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
 });

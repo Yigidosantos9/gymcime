@@ -203,6 +203,26 @@ src/app/exercise/[id].tsx.
 > **Not (2.7-B tamamlandı):** Migrasyon v7 (`exercises.kind`, `sets.duration_sec/distance_m/level/kcal`; seed türleri, "(min)" adları temizlendi, eski kardiyo dakikaları `duration_sec`e taşındı, özel "Kardiyo" egzersizleri cardio). Yeni saf modül `src/lib/cardio.ts` (dk:sn/km biçim+ayrıştırma, basit öneri, PR). Antrenman ekranı türe göre sütun, kardiyoda mola/zorluk/ısınma yok; seçici türü soruyor; egzersiz detayı kardiyo geçmişi. `STRENGTH_KIND_SQL` ile muscleSets/muscleLastTrained/weeklyVolume/topExercises/özet kardiyosuz; yeni `weeklyCardio`, `cardioHistory`, `FinishSummary.cardio`, `WorkoutListItem.cardio_sec`. Test: `tests/cardio.test.ts`.
 > A için: summary ekranı `prs` kardiyo PR'ında weight/reps = 0 görür (`kind`, `duration_sec`, `distance_m` alanları var) ve `summary.cardio` ({sets, minutes, km}) gösterilebilir; ilerleme sekmesinde `weeklyCardio` ile "Kardiyo" özeti eklenebilir. Simülatörde tıklama yok: set tamamlama/PR etkileşimi cihazda elle denenmeli.
 
+## Görev 2.8 — Egzersiz kütüphanesi, her sekmede "Bugün"e dönüş, doğrudan rutin oluşturma  `[x]`
+1. **Egzersiz kütüphanesi** (yeni ekran `src/app/exercises.tsx`, Stack + `HeaderBack`, başlık "Egzersizler"):
+   - Daha önce hiç yapılmamış hareketler dahil TÜM egzersizler; arama (İngilizce ad + Türkçe takma ad + kas, aksan duyarsız),
+     kas grubu çipleri ve tür filtresi (Ağırlık / Vücut ağırlığı / Kardiyo / Süreli); satırda küçük görsel (exercise-media ilk poz) +
+     MuscleIcon + ad + kas/ekipman; dokununca `/exercise/[id]`.
+   - `/exercise/[id]` geçmişi olmayan egzersizde de düzgün görünsün: "Nasıl yapılır" (görseller + Türkçe adımlar) üstte, ardından
+     AI rehberi kartı, sonra (varsa) geçmiş/grafik; geçmiş yoksa "Henüz yapmadın" boş durumu (hata/boş grafik yok).
+   - Giriş noktaları: Rutinler sekmesinin üstünde "Egzersiz kütüphanesi" butonu/kartı; ana sayfada küçük bir kısayol; egzersiz seçicide
+     her satırda "i" (bilgi) butonu → detay (seçimi bozmadan).
+   - Özel egzersiz oluşturma kütüphaneden de yapılabilsin (mevcut picker'daki oluşturma formunu yeniden kullan).
+2. **Her sekmede "‹ Bugün" geri dönüşü:** Rutinler, Geçmiş, İlerleme, Beslenme sekmelerinin başlığında HER ZAMAN (yalnızca ana sayfadan
+   gelince değil) "‹ Bugün" butonu; dokununca Bugün sekmesine geçer. Android geri tuşu: Bugün dışındaki sekmeden Bugün'e döner
+   (`NativeTabs backBehavior` → `initialRoute`; tiplerden doğrula). `?from=index` mantığı artık gereksizse sadeleştir.
+3. **Doğrudan rutin oluşturma:** "Yeni rutin oluştur" (Rutinler) zaten `/routine/new`'e gidiyor — akışın antrenman bitirmeden uçtan uca
+   çalıştığını test et (ad → egzersiz ekle (picker) → set/tekrar → kaydet → listede görünür → başlat). Ana sayfadaki "+" rutin seçme
+   sheet'ine "Yeni rutin oluştur" seçeneği ekle. Yeni rutin kaydedilince rutin listesine dön (veya rutin sayfasında "Başlat" net olsun).
+
+> **Not (Görev 2.8 tamamlandı):** `src/app/exercises.tsx` kütüphane (arama + kas/tür çipleri, görsel önizleme, özel egzersiz oluşturma); saf mantık `src/lib/exercise-library.ts` (`filterExercises`, picker da kullanıyor); ortak form `src/components/create-exercise.tsx`. Picker satırlarında "i" butonu → detay. Giriş noktaları: Rutinler sekmesi butonu, ana sayfa başlığında arama ikonu. Egzersiz detayında "Nasıl yapılır" + AI kartı üstte, ardından dinlenme/geçmiş; geçmişsizde "Henüz yapmadın".
+> `HomeBack` ("‹ Bugün") artık dört sekmede her zaman görünür (`fromHome`/`?from=index` kaldırıldı); `backBehavior="initialRoute"`. Ana sayfa "+" sheet'ine "Yeni rutin oluştur" eklendi; yeni rutin kaydedilince `leave()` ile listeye/önceki sekmeye dönülür (eskiden yeni rutin sayfasına replace ediyordu). Test: `tests/library.test.ts` (arama/filtre, geçmişsiz sorgular, saveRoutine → startWorkout). Simülatörde kütüphane, Pull-Up detayı ve "‹ Bugün" görüldü; tıklama olmadığı için rutin oluşturma akışı UI'dan ve picker "i" butonu cihazda elle denenmeli.
+
 ## Görev 3 — Çok haftalı program oluşturucu  `[ ]`  (Görev 1-2 bitince)
 Program → haftalar (4–12) → günler (haftanın günleri) → rutinler; deload haftası; ana sayfada "Hafta 3 · Gün 2";
 kaçırılan gün için kaydır/atla; uyum analizi. AI ile program önerisi (anahtar gerekir; şemalı çıktı, önizleme + onay).

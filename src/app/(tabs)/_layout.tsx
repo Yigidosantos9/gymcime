@@ -36,7 +36,7 @@ export default function TabsLayout() {
       indicatorColor={t.primarySoft}
       rippleColor={t.primarySoft}
       minimizeBehavior="onScrollDown"
-      backBehavior="history">
+      backBehavior="initialRoute">
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Label>Bugün</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={home.sf} md={home.md} />

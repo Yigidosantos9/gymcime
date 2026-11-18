@@ -12,7 +12,7 @@ Her görev bitince kutucuğunu `[x]` yap ve altına 1-2 satırlık not düş.
 - DB değişikliği = yeni migrasyon sürümü (`src/db/migrate.ts`, `addColumn` + `setVersion`).
 - Sayısal ağırlık önerileri deterministik kalır (`src/lib/progression.ts`); AI açıklar/planlar.
 - Kullanıcının kendi Metro sunucusu 8081'de çalışıyor olabilir — ONA DOKUNMA. Kendi doğrulaman için `npx expo start --port 8082 --localhost`.
-  iOS simülatörü: `BC55C8CA-1367-42E2-BC4E-84A15F6939A1`, `xcrun simctl openurl … exp://127.0.0.1:8082/--/<route>`, ekran görüntüsü `xcrun simctl io … screenshot`.
+  iOS simülatörü: `73455762-0ABA-4589-B0D1-9BFA3D469296` (iPhone 18 Pro, iOS 27.2) — üzerinde gymcime **development build** kurulu (Expo Go değil). Metro: `npx expo start --dev-client --port 8082 --localhost`; aç: `xcrun simctl openurl 73455762-0ABA-4589-B0D1-9BFA3D469296 "exp+gymcime://expo-development-client/?url=http%3A%2F%2F127.0.0.1%3A8082"`; ekran görüntüsü `xcrun simctl io … screenshot`. Simülatör DB'si: `xcrun simctl get_app_container <udid> com.yigidosantos9.gymcime data` altındaki `gymcime.db`. Native değişiklik (yeni native paket/plugin) gerekirse `npx expo run:ios --device 73455762-0ABA-4589-B0D1-9BFA3D469296 --port 8082`.
   Simülatör DB'si: Expo Go veri klasöründeki `gymcime.db` (sqlite3 ile tohumla, iş bitince sil).
 - Doğrulama zorunlu: `npx tsc --noEmit`, `npx expo lint`, node:sqlite ile mantık testleri (`$CLAUDE_JOB_DIR/tmp/dbtest` altında, esbuild ile `--alias:@=src`), simülatör ekran görüntüleri.
 - Kullanıcı paralel çalışan, salt-okunur bir **kontrolcü agent** istiyor: her görevin sonunda bir general-purpose agent başlat
@@ -304,6 +304,28 @@ Kullanıcı isteği: haftanın günlerine rutin ata, takvimde görünsün. (Gör
 > DB'de Türkçe anahtar KALIR (kas/ekipman/hedef/seviye/öğün/seed rutin adı/"Serbest Antrenman"), yalnızca gösterim çevrilir. Tablolar (SET_TYPES, EFFORT, RULE_TABLE, ACTIVITY, WEEK_TEMPLATES, EXERCISE_KINDS, FOOD_CATEGORIES) getter'lıdır. Sayı: TR 62,5 / EN 62.5; tarih/gün/ay adları `localeData`. progression gerekçeleri, nutrition gerekçe/kategori, cardio/rest/recovery/plates/diff/goals, backup/photo/AI hata metinleri çevrildi.
 > İçerik: `exercise-media.ts` → `steps: { tr, en }` (İngilizce kaynak git `b3a2f1c`'den; `kb-swing` İngilizcesi elle yazıldı), `muscleName`; yiyeceklere `nameEn` (`src/data/foods-en.ts`), arama iki dilde, kategori adları ve porsiyon etiketleri (`portionLabel`) çevrilir. AI rehberi/yemek tahmini seçili dilde istenir; DB v11: `exercise_guides` (exercise_id, lang) anahtarlı — rehber önbelleği dile göre ayrı (eski rehberler `tr`). Testler: `tests/i18n.test.ts` (anahtar/parametre/çoğul eşliği, Türkçe sabit metin taraması, biçimlendirme, etiketler, öneri/AI/hatırlatıcı, rehber önbelleği + migrasyon, yiyecek adları).
 > Bilinen sınırlar: kullanıcının girdiği metinler (rutin/antrenman adı, notlar, özel egzersiz) ve KAYITLI geçmiş metinler (öğün kaydının adı/porsiyonu, eski AI çıktıları) çevrilmez; egzersiz adları İngilizce kalır; iOS sistem izin penceresi metinleri (Info.plist) yerelleştirilmedi; tarih ayırıcı/saat 24 saat biçimi iki dilde aynı.
+
+## Görev 2.13 — Görsel büyütme + günlere özel renkler + yazı boyutu ayarı  `[ ]`
+1. **Tasarım sistemi ölçeği** (`src/constants/theme.ts`, `src/components/ui.tsx`): tüm metin varyantları (`T`), ikon varsayılan boyutları,
+   buton yükseklikleri, Chip/Badge/IconButton boyutları, kart iç boşlukları, set satırı girişleri (antrenman ekranı kg/tekrar kutuları),
+   BodyMap ve MuscleIcon boyutları büyüsün. Varsayılan "Büyük" ölçek ≈ mevcut değerlerin %115'i; dokunma hedefleri ≥ 44 pt.
+   Ekranlarda sabit `fontSize`/boyut kullanılan yerleri tarayıp ölçek sisteminden geçir (tek kaynak).
+2. **Yazı boyutu ayarı:** Ayarlar → Görünüm altında "Yazı boyutu: Normal (%100) / Büyük (%115, varsayılan) / Çok büyük (%130)";
+   tercih `settings.font_scale`, ThemeProvider/LanguageProvider kalıbıyla bir `useScale()` (veya tema içinde `scale`) — değişince anında
+   uygulansın (React Compiler önbelleği için gerekirse alt ağaç `key` ile yeniden kurulsun). iOS sistem yazı boyutu (`allowFontScaling`)
+   açık kalsın ama düzen bozulmasın: büyük metinlerde `maxFontSizeMultiplier` ile makul sınır.
+   Ölçek büyüdüğünde taşma/kesilme olmasın: tablo satırları (antrenman ekranı SET/ÖNCEKİ/KG/TEKRAR), sekme başlıkları, bento kutuları,
+   takvim hücreleri; gerekirse satır sarma, `numberOfLines` + `adjustsFontSizeToFit`, esnek genişlik.
+3. **Günlere özel renkler:** `src/constants/theme.ts`'e 7 günlük palet (koyu ve açık temada ayrı, okyanus temasıyla uyumlu, birbirinden
+   ayırt edilebilir; örn. Pzt mercan, Sal amber, Çar yeşil, Per turkuaz, Cum mavi, Cmt mor, Paz pembe; her biri için `color` + `soft` zemin).
+   Kullanım: ana sayfa hafta/plan şeridi (gün harfi/nokta/rutin adı o günün renginde; bugün daha belirgin), Haftalık plan ekranı (her gün
+   satırı renkli şerit/rozet), Geçmiş aylık takvimi (antrenman yapılan gün, o günün haftanın günü rengi değil — **planlı rutinin atandığı gün
+   rengi**; plan yoksa haftanın günü rengi), rutin kartları (rutin plana bir veya daha fazla güne atanmışsa o günlerin renk rozetleri).
+   Renk körlüğüne karşı yalnız renge güvenme: gün harfi/etiket her zaman görünür. Kontrast: metin/zemin en az WCAG AA.
+4. **Testler:** ölçek fonksiyonu (Normal/Büyük/Çok büyük), gün paleti 7 renk + iki tema + kontrast oranı testi (basit göreli parlaklık
+   hesabıyla AA ≥ 4.5 metin için), font_scale ayarının okunup yazılması; mevcut testler geçmeli.
+5. **Doğrulama:** simülatörde development build ile en fazla 4 ekran görüntüsü: ana sayfa (Büyük), antrenman ekranı (Çok büyük — taşma yok),
+   haftalık plan, Geçmiş takvimi.
 
 ## Görev Havuzu (öncelik sırası; kullanıcı onayıyla seçilecek)
 - **Barkod okuma** (expo-camera; Open Food Facts ücretsiz API — kullanıcı verisi göndermeden ürün sorgusu) → beslenmeye hızlı ekleme.

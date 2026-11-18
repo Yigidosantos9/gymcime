@@ -21,7 +21,7 @@ import {
   type WeekPlanDay,
 } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
-import { useTheme } from '@/hooks/use-theme';
+import { useScale, useTheme } from '@/hooks/use-theme';
 import { haptic } from '@/lib/haptics';
 import { syncReminders } from '@/lib/reminder-io';
 import { muscleFrequency, recoveryConflicts, templateAssignments, WEEK_TEMPLATES, weekdayNames, weekdayShort, weekdayOf, type WeekTemplate } from '@/lib/week-plan';
@@ -29,6 +29,7 @@ import { useT } from '@/components/language-provider';
 import { muscleLabel, routineLabel } from '@/i18n/labels';
 
 export default function WeekPlan() {
+  const { f } = useScale();
   const _ = useT();
   const t = useTheme();
   const sheet = useSheet();
@@ -71,7 +72,7 @@ export default function WeekPlan() {
                     haptic.success();
                     changed();
                   }}
-                  style={[styles.pickRow, { backgroundColor: on ? t.primarySoft : t.surfacePressed }]}>
+                  style={[styles.pickRow, { minHeight: f(54) }, { backgroundColor: on ? t.primarySoft : t.surfacePressed }]}>
                   <Icon name="barbell" size={16} color={t.primary} />
                   <View style={{ flex: 1 }}>
                     <T variant="heading" numberOfLines={1}>
@@ -92,7 +93,7 @@ export default function WeekPlan() {
               await setWeekPlanRoutine(db, d.weekday, null);
               changed();
             }}
-            style={[styles.pickRow, { backgroundColor: t.surfacePressed, justifyContent: 'center' }]}>
+            style={[styles.pickRow, { minHeight: f(54) }, { backgroundColor: t.surfacePressed, justifyContent: 'center' }]}>
             <Icon name="moon" size={16} color={t.text} />
             <T variant="heading">{_('weekPlan.rest_day')}</T>
           </PressableScale>
@@ -101,7 +102,7 @@ export default function WeekPlan() {
               await close();
               router.push('/routine/new');
             }}
-            style={[styles.pickRow, { backgroundColor: t.primarySoft, justifyContent: 'center' }]}>
+            style={[styles.pickRow, { minHeight: f(54) }, { backgroundColor: t.primarySoft, justifyContent: 'center' }]}>
             <Icon name="add" size={16} color={t.primary} />
             <T variant="heading" color={t.primary}>{_('common.create_a_new_routine')}</T>
           </PressableScale>
@@ -195,9 +196,9 @@ export default function WeekPlan() {
       {plan.map((d, i) => (
         <Animated.View key={d.weekday} entering={FadeInDown.delay(i * 35).duration(300)}>
           <PressableScale onPress={() => pickRoutine(d)} scaleTo={0.985} accessibilityLabel={_('weekPlan.pick_a_routine', { v: weekdayNames()[d.weekday], v2: d.routine_name ?? _('weekPlan.rest_day2') })}>
-            <Card style={[styles.dayCard, d.weekday === today && { borderColor: t.primary, borderWidth: 1.5 }]}>
-              <View style={[styles.dayBadge, { backgroundColor: d.routine_id ? t.primarySoft : t.surfaceRaised }]}>
-                <T variant="heading" color={d.routine_id ? t.primary : t.textMuted} style={{ fontSize: 14 }}>
+            <Card style={[styles.dayCard, { borderLeftWidth: 4, borderLeftColor: t.days[d.weekday].color }, d.weekday === today && { borderColor: t.days[d.weekday].color, borderWidth: 1.5, borderLeftWidth: 4 }]}>
+              <View style={[styles.dayBadge, { backgroundColor: d.routine_id ? t.days[d.weekday].soft : t.surfaceRaised, width: f(46), height: f(46) }]}>
+                <T variant="heading" color={t.days[d.weekday].color} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ fontSize: 14 }}>
                   {weekdayShort()[d.weekday]}
                 </T>
               </View>

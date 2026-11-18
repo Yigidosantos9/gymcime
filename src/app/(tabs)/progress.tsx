@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -8,12 +8,12 @@ import { BodyMap, HeatLegend, MuscleIcon } from '@/components/body-map';
 import { BarChart, LineChart } from '@/components/charts';
 import { HomeBack } from '@/components/tab-back';
 import { Icon } from '@/components/icon';
-import { Badge, Card, Chip, EmptyState, IconButton, PressableScale, ScreenHeader, SectionHeader, T } from '@/components/ui';
+import { Badge, Card, Chip, EmptyState, IconButton, Input, PressableScale, ScreenHeader, SectionHeader, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { addBodyWeight, weeklyCardio, getProfile, listBodyWeights, muscleLastTrained, muscleSets, restStats, topExercises, weeklyVolume } from '@/db/queries';
 import { MUSCLES } from '@/db/seed';
 import { useDbQuery } from '@/hooks/use-db-query';
-import { useTheme } from '@/hooks/use-theme';
+import { useScale, useTheme } from '@/hooks/use-theme';
 import { formatDate, formatDuration, formatWeight, parseNumber } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { computeRecovery, fatigueValues, restLabel } from '@/lib/recovery';
@@ -26,6 +26,7 @@ import { decimalSep } from '@/i18n';
 type Range = 7 | 28;
 
 export default function Progress() {
+  const { f } = useScale();
   const _ = useT();
   const t = useTheme();
   const [bw, setBw] = useState('');
@@ -149,14 +150,14 @@ export default function Progress() {
                 return (
                   <View key={m} style={styles.muscleRow}>
                     <MuscleIcon muscle={m} size={26} />
-                    <T variant="label" style={{ width: 62 }}>
+                    <T variant="label" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ width: f(62) }}>
                       {m}
                     </T>
                     <View style={[styles.track, { backgroundColor: t.surfacePressed }]}>
                       <View style={[styles.band, { backgroundColor: t.successSoft, borderColor: t.success }]} />
                       <View style={{ width: `${pct * 100}%`, height: '100%', borderRadius: 5, backgroundColor: color }} />
                     </View>
-                    <T variant="label" color={color} style={{ width: 30, textAlign: 'right', fontFamily: Font.bold }}>
+                    <T variant="label" color={color} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ width: f(30), textAlign: 'right', fontFamily: Font.bold }}>
                       {Math.round(sets)}
                     </T>
                   </View>
@@ -290,7 +291,7 @@ export default function Progress() {
               <T secondary>{_('progress.log_your_weight_regularly_and')}</T>
             )}
             <View style={styles.bwRow}>
-              <TextInput
+              <Input
                 value={bw}
                 onChangeText={setBw}
                 placeholder={_('progress.today_s_weight')}
@@ -299,7 +300,7 @@ export default function Progress() {
                 style={[styles.bwInput, { backgroundColor: t.surfaceRaised, color: t.text }]}
                 onSubmitEditing={saveBw}
               />
-              <PressableScale onPress={saveBw} style={[styles.bwBtn, { backgroundColor: t.primary }]}>
+              <PressableScale onPress={saveBw} style={[styles.bwBtn, { backgroundColor: t.primary, width: f(48), height: f(48), borderRadius: f(24) }]}>
                 <Icon name="add" size={18} color={t.onPrimary} />
               </PressableScale>
             </View>

@@ -4,9 +4,11 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type PressableProps,
   type StyleProp,
+  type TextInputProps,
   type TextProps,
   type TextStyle,
   type ViewStyle,
@@ -15,8 +17,8 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import Svg, { Circle } from 'react-native-svg';
 
 import { Icon, type IconName } from '@/components/icon';
-import { Font, Radius, Spacing } from '@/constants/theme';
-import { useTheme } from '@/hooks/use-theme';
+import { Font, MAX_FONT_MULTIPLIER, MIN_TOUCH, Radius, Spacing, scaled } from '@/constants/theme';
+import { useScale, useTheme } from '@/hooks/use-theme';
 import { haptic } from '@/lib/haptics';
 import { t as tt, type MsgKey } from '@/i18n';
 
@@ -38,6 +40,15 @@ const variantStyle: Record<Variant, TextStyle> = {
   numLarge: { fontSize: 44, fontFamily: Font.heavy, letterSpacing: -1.5, fontVariant: ['tabular-nums'], lineHeight: 50 },
 };
 
+/** Metin stilindeki fontSize/lineHeight'ı ölçekle (tek kaynak: ekranlardaki sabit boyutlar da buradan geçer). */
+export function scaleTextStyle(style: TextStyle, scale: number): TextStyle {
+  return {
+    ...style,
+    ...(typeof style.fontSize === 'number' ? { fontSize: scaled(style.fontSize, scale) } : null),
+    ...(typeof style.lineHeight === 'number' ? { lineHeight: scaled(style.lineHeight, scale) } : null),
+  };
+}
+
 export function T({
   variant = 'body',
   color,
@@ -47,8 +58,37 @@ export function T({
   ...rest
 }: TextProps & { variant?: Variant; color?: string; muted?: boolean; secondary?: boolean }) {
   const t = useTheme();
+  const { scale } = useScale();
   const c = color ?? (muted ? t.textMuted : secondary ? t.textSecondary : t.text);
-  return <Text {...rest} style={[variantStyle[variant], { color: c }, style]} />;
+  return (
+    <Text
+      maxFontSizeMultiplier={MAX_FONT_MULTIPLIER}
+      {...rest}
+      style={scaleTextStyle({ ...variantStyle[variant], color: c, ...(StyleSheet.flatten(style) as TextStyle | undefined) }, scale)}
+    />
+  );
+}
+
+/** TextInput: yazı boyutu ve yükseklik ölçeğe göre büyür (sabit boyutlu giriş alanları için tek kaynak). */
+export function Input({ style, ...rest }: TextInputProps) {
+  const { scale } = useScale();
+  const flat = (StyleSheet.flatten(style) ?? {}) as TextStyle;
+  const grow = (n: unknown) => (typeof n === 'number' ? scaled(n, scale) : undefined);
+  return (
+    <TextInput
+      maxFontSizeMultiplier={MAX_FONT_MULTIPLIER}
+      {...rest}
+      style={[
+        style,
+        {
+          ...(flat.fontSize != null ? { fontSize: grow(flat.fontSize) } : null),
+          ...(flat.height != null ? { height: grow(flat.height) } : null),
+          ...(flat.minHeight != null ? { minHeight: grow(flat.minHeight) } : null),
+          ...(flat.lineHeight != null ? { lineHeight: grow(flat.lineHeight) } : null),
+        },
+      ]}
+    />
+  );
 }
 
 // ───────────────────────── Basınca küçülen Pressable ─────────────────────────
@@ -111,6 +151,7 @@ export function Button({
   small?: boolean;
 }) {
   const t = useTheme();
+  const { f, touch } = useScale();
   const bg = {
     primary: t.primary,
     success: t.success,
@@ -132,7 +173,8 @@ export function Button({
       disabled={disabled || loading}
       style={[
         styles.btn,
-        small && styles.btnSmall,
+        { minHeight: f(54) },
+        small && [styles.btnSmall, { minHeight: touch(36) }],
         { backgroundColor: bg },
         solid && { shadowColor: kind === 'success' ? t.success : t.primary, shadowOpacity: t.isDark ? 0.35 : 0.25, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
         disabled && { opacity: 0.4 },
@@ -166,6 +208,7 @@ export function Card({
   raised?: boolean;
 }) {
   const t = useTheme();
+  const { s } = useScale();
   return (
     <View
       style={[
@@ -176,7 +219,7 @@ export function Card({
           shadowColor: t.shadow,
           shadowOpacity: t.isDark ? 0 : 0.05,
         },
-        padded && { padding: Spacing.lg },
+        padded && { padding: s(Spacing.lg) },
         style,
       ]}>
       {children}
@@ -237,12 +280,16 @@ export function Chip({
   tint?: string;
 }) {
   const t = useTheme();
+  const { f } = useScale();
   const c = tint ?? t.primary;
+  const h = f(34);
   return (
     <PressableScale
       onPress={onPress}
+      hitSlop={{ top: Math.max(0, Math.ceil((MIN_TOUCH - h) / 2)), bottom: Math.max(0, Math.ceil((MIN_TOUCH - h) / 2)) }}
       style={[
         styles.chip,
+        { height: h },
         {
           backgroundColor: active ? c : t.surfaceRaised,
           borderColor: active ? c : t.border,
@@ -304,14 +351,16 @@ export function IconButton({
   style?: StyleProp<ViewStyle>;
 }) {
   const t = useTheme();
+  const { f } = useScale();
+  const box = f(40);
   return (
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label ?? iconLabel(icon)}
       onPress={onPress}
       disabled={disabled}
-      hitSlop={8}
-      style={[styles.iconBtn, { backgroundColor: bg ?? t.surfaceRaised, borderColor: t.border }, disabled && { opacity: 0.35 }, style]}>
+      hitSlop={Math.max(8, Math.ceil((MIN_TOUCH - box) / 2))}
+      style={[styles.iconBtn, { width: box, height: box, borderRadius: box / 2,  backgroundColor: bg ?? t.surfaceRaised, borderColor: t.border }, disabled && { opacity: 0.35 }, style]}>
       <Icon name={icon} size={size} color={color ?? t.text} />
     </PressableScale>
   );
@@ -326,7 +375,9 @@ export function ScreenHeader({ title, subtitle, right }: { title: string; subtit
             {subtitle}
           </T>
         )}
-        <T variant="display">{title}</T>
+        <T variant="display" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+          {title}
+        </T>
       </View>
       {right}
     </View>
@@ -353,16 +404,17 @@ export function SectionHeader({ title, action, onAction }: { title: string; acti
 
 export function EmptyState({ icon, title, text, children }: { icon: IconName; title: string; text?: string; children?: ReactNode }) {
   const t = useTheme();
+  const { f } = useScale();
   return (
     <View style={styles.empty}>
-      <View style={[styles.emptyIcon, { backgroundColor: t.primarySoft }]}>
+      <View style={[styles.emptyIcon, { backgroundColor: t.primarySoft, width: f(68), height: f(68), borderRadius: f(34) }]}>
         <Icon name={icon} size={30} color={t.primary} />
       </View>
       <T variant="heading" style={{ textAlign: 'center' }}>
         {title}
       </T>
       {text && (
-        <T secondary style={{ textAlign: 'center', maxWidth: 280 }}>
+        <T secondary style={{ textAlign: 'center', maxWidth: 300 }}>
           {text}
         </T>
       )}
@@ -392,8 +444,8 @@ export function Stat({ value, label, unit }: { value: string; label: string; uni
 /** İlerleme halkası (0-1). */
 export function Ring({
   progress,
-  size = 64,
-  stroke = 7,
+  size: sizeProp = 64,
+  stroke: strokeProp = 7,
   color,
   track,
   children,
@@ -406,6 +458,9 @@ export function Ring({
   children?: ReactNode;
 }) {
   const t = useTheme();
+  const k = useScale().scale;
+  const size = scaled(sizeProp, k);
+  const stroke = scaled(strokeProp, Math.min(k, 1.15));
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const p = Math.max(0, Math.min(1, progress));

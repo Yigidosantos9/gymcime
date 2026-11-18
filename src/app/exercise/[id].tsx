@@ -223,7 +223,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: Spacing.lg,
     paddingHorizontal: Spacing.lg,
-    height: 50,
+    minHeight: 50,
     borderRadius: Radius.md,
     borderWidth: StyleSheet.hairlineWidth,
   },

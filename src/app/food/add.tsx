@@ -2,10 +2,10 @@ import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useMemo, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
-import { Button, Card, Chip, Divider, IconButton, PressableScale, SectionHeader, T } from '@/components/ui';
+import { Button, Card, Chip, Divider, IconButton, Input, PressableScale, SectionHeader, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { FOOD_CATEGORIES, type FoodCategoryId, type FoodTr } from '@/data/foods-tr';
 import { addFoodLog, addFoodLogs, favoriteFoods, recentFoods, toggleFavorite, type Food } from '@/db/nutrition-queries';
@@ -98,7 +98,7 @@ export default function AddFood() {
 
         <SectionHeader title={_('foodAdd.quick_add')} />
         <Card style={{ gap: Spacing.md }}>
-          <TextInput
+          <Input
             value={form.name}
             onChangeText={set('name')}
             placeholder={_('foodAdd.food_name')}
@@ -111,7 +111,7 @@ export default function AddFood() {
             <Num label={_('common.carbs')} unit="g" value={form.carbs} onChange={set('carbs')} />
             <Num label={_('common.fat')} unit="g" value={form.fat} onChange={set('fat')} />
           </View>
-          <TextInput
+          <Input
             value={form.portion}
             onChangeText={set('portion')}
             placeholder={_('foodAdd.serving_e_g_1_bowl')}
@@ -226,7 +226,7 @@ function FoodSearch({ saving, onAdd }: { saving: boolean; onAdd: (f: FoodTr, ser
         ) : (
           <View style={{ gap: 3 }}>
             <T variant="caption" secondary>{_('foodAdd.amount', { unit: picked.unit })}</T>
-            <TextInput
+            <Input
               value={gramText}
               onChangeText={setGramText}
               keyboardType="decimal-pad"
@@ -253,7 +253,7 @@ function FoodSearch({ saving, onAdd }: { saving: boolean; onAdd: (f: FoodTr, ser
     <Card style={{ gap: Spacing.md }}>
       <View style={[styles.searchBox, { backgroundColor: t.surfaceRaised }]}>
         <Icon name="search" size={16} color={t.textMuted} />
-        <TextInput
+        <Input
           value={query}
           onChangeText={setQuery}
           placeholder={_('foodAdd.search_bagel_meatballs_soup')}
@@ -365,7 +365,7 @@ function PhotoEstimate({ hasKey, saving, onSave }: { hasKey: boolean; saving: bo
         <Button title={_('foodAdd.gallery')} icon="photo" kind="secondary" small onPress={() => pick('library')} />
       </View>
       {photo && <Image source={{ uri: photo.uri }} style={styles.preview} contentFit="cover" />}
-      <TextInput
+      <Input
         value={note}
         onChangeText={setNote}
         placeholder={_('foodAdd.note_optional_e_g_2')}
@@ -388,7 +388,7 @@ function PhotoEstimate({ hasKey, saving, onSave }: { hasKey: boolean; saving: bo
             return (
               <View key={i} style={{ gap: 6 }}>
                 <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                  <TextInput
+                  <Input
                     value={r.name}
                     onChangeText={(v) => upd(i, 'name', v)}
                     style={[styles.input, { flex: 1, height: 42, backgroundColor: t.surfaceRaised, color: t.text }]}
@@ -430,7 +430,7 @@ function Num({ label, unit, value, onChange }: { label: string; unit: string; va
         {label}
         {unit ? ` (${unit})` : ''}
       </T>
-      <TextInput
+      <Input
         value={value}
         onChangeText={onChange}
         keyboardType="decimal-pad"

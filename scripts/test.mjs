@@ -31,7 +31,7 @@ for (const f of files) {
       logLevel: 'error',
       alias: { '@': path.join(root, 'src'), '@anthropic-ai/sdk': path.join(root, 'node_modules/@anthropic-ai/sdk') },
       external: ['expo-sqlite', 'node:sqlite'],
-      loader: { '.jpg': 'empty', '.png': 'empty' },
+      loader: { '.jpg': 'empty', '.png': 'empty', '.css': 'empty' },
       banner: { js: "import{createRequire}from'module';const require=createRequire(import.meta.url);" },
     });
   } catch {

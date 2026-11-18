@@ -23,7 +23,7 @@ import {
   weeklyVolume,
 } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
-import { useTheme } from '@/hooks/use-theme';
+import { useScale, useTheme } from '@/hooks/use-theme';
 import { formatDayLong, formatMinutes } from '@/lib/format';
 import { computeRecovery, restingMuscles } from '@/lib/recovery';
 import { beginWorkout } from '@/lib/start-workout';
@@ -42,6 +42,7 @@ function hello() {
 }
 
 export default function Home() {
+  const { f } = useScale();
   const _ = useT();
   const t = useTheme();
   const sheet = useSheet();
@@ -108,7 +109,7 @@ export default function Home() {
                   await close();
                   beginWorkout(db, r.id, sheet);
                 }}
-                style={[styles.pickRow, { backgroundColor: t.surfacePressed }]}>
+                style={[styles.pickRow, { minHeight: f(54) }, { backgroundColor: t.surfacePressed }]}>
                 <View style={[styles.routineIcon, { backgroundColor: t.primarySoft, marginBottom: 0 }]}>
                   <Icon name="barbell" size={16} color={t.primary} />
                 </View>
@@ -129,7 +130,7 @@ export default function Home() {
               await close();
               router.push('/routine/new');
             }}
-            style={[styles.pickRow, { backgroundColor: t.surfacePressed, justifyContent: 'center' }]}>
+            style={[styles.pickRow, { minHeight: f(54) }, { backgroundColor: t.surfacePressed, justifyContent: 'center' }]}>
             <Icon name="add" size={16} color={t.text} />
             <T variant="heading">{_('common.create_a_new_routine')}</T>
           </PressableScale>
@@ -138,7 +139,7 @@ export default function Home() {
               await close();
               beginWorkout(db, null, sheet);
             }}
-            style={[styles.pickRow, { backgroundColor: t.primarySoft, justifyContent: 'center' }]}>
+            style={[styles.pickRow, { minHeight: f(54) }, { backgroundColor: t.primarySoft, justifyContent: 'center' }]}>
             <Icon name="bolt" size={16} color={t.primary} />
             <T variant="heading" color={t.primary}>{_('common.empty_workout')}</T>
           </PressableScale>
@@ -219,7 +220,7 @@ export default function Home() {
             <View style={{ flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg }}>
               <PressableScale
                 onPress={() => beginWorkout(db, (restDay ? suggested : next)?.id ?? null, sheet)}
-                style={[styles.heroBtn, { backgroundColor: '#fff', flex: 1 }]}>
+                style={[styles.heroBtn, { height: f(52), borderRadius: f(26) }, { backgroundColor: '#fff', flex: 1 }]}>
                 <Icon name="play" size={15} color={t.isDark ? '#083F66' : t.primaryStrong} />
                 <T variant="heading" color={t.isDark ? '#083F66' : t.primaryStrong}>
                   {restDay ? _('home.start_anyway') : _('home.start_workout')}
@@ -228,7 +229,7 @@ export default function Home() {
               <PressableScale
                 onPress={() => pickRoutine()}
                 accessibilityLabel={_('home.pick_a_routine_or_start')}
-                style={[styles.heroBtn, { backgroundColor: 'rgba(255,255,255,0.16)', paddingHorizontal: 18 }]}>
+                style={[styles.heroBtn, { height: f(52), borderRadius: f(26) }, { backgroundColor: 'rgba(255,255,255,0.16)', paddingHorizontal: 18 }]}>
                 <Icon name="add" size={16} color="#fff" />
               </PressableScale>
             </View>
@@ -252,16 +253,18 @@ export default function Home() {
               {weekdayLetters().map((d, i) => {
                 const done = stats.daysDone.has(i);
                 const today = i === todayIdx;
+                const dc = t.days[i];
                 return (
                   <View key={i} style={{ alignItems: 'center', gap: 3 }}>
                     <View
                       style={[
                         styles.dot,
-                        { backgroundColor: done ? t.primary : t.surfacePressed },
-                        today && !done && { borderWidth: 1.5, borderColor: t.primary },
+                        { width: f(12), height: f(12), borderRadius: f(6) },
+                        { backgroundColor: done ? dc.color : t.surfacePressed },
+                        today && { borderWidth: 2, borderColor: dc.color },
                       ]}
                     />
-                    <T variant="caption" color={today ? t.primary : t.textMuted} style={{ fontSize: 9 }}>
+                    <T variant="caption" color={dc.color} style={{ fontSize: 9, fontFamily: today ? Font.heavy : Font.medium }}>
                       {d}
                     </T>
                   </View>
@@ -290,16 +293,16 @@ export default function Home() {
           <Tile icon="body" label={_('home.last_7_days_muscles_worked')} onPress={() => router.navigate('/progress')} style={{ marginTop: Spacing.md }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ flex: 1 }}>
-                <BodyMap values={muscleValues} size={150} labels={false} />
+                <BodyMap values={muscleValues} size={140} labels={false} />
               </View>
-              <View style={{ width: 120, gap: 6 }}>
+              <View style={{ width: f(120), gap: 6 }}>
                 {muscles.length === 0 ? (
                   <T variant="caption" muted>{_('home.your_muscles_will_light_up')}</T>
                 ) : (
                   muscles.slice(0, 5).map((m) => (
                     <View key={m.muscle} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <T variant="label">{muscleLabel(m.muscle)}</T>
-                      <T variant="label" color={t.primary}>
+                      <T variant="label" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ flexShrink: 1 }}>{muscleLabel(m.muscle)}</T>
+                      <T variant="label" color={t.primary} numberOfLines={1}>
                         {_('home.sets2', { count: m.sets })}</T>
                     </View>
                   ))
@@ -358,7 +361,7 @@ export default function Home() {
               contentContainerStyle={{ gap: Spacing.md, paddingHorizontal: Spacing.lg }}
               style={{ marginHorizontal: -Spacing.lg }}>
               {routines.map((r) => (
-                <PressableScale key={r.id} onPress={() => beginWorkout(db, r.id, sheet)} style={[styles.routineCard, { backgroundColor: t.surface, borderColor: t.border }]}>
+                <PressableScale key={r.id} onPress={() => beginWorkout(db, r.id, sheet)} style={[styles.routineCard, { width: f(150) }, { backgroundColor: t.surface, borderColor: t.border }]}>
                   <View style={[styles.routineIcon, { backgroundColor: t.primarySoft }]}>
                     <Icon name="barbell" size={16} color={t.primary} />
                   </View>
@@ -411,6 +414,7 @@ export default function Home() {
 
 /** Haftalık plan şeridi: her gün için durum (✓ yapıldı, soluk = kaçırıldı), altında rutinin kısa adı. */
 function PlanStrip({ plan, hasPlan, daysDone, todayIdx, now }: { plan: Awaited<ReturnType<typeof getWeekPlan>>; hasPlan: boolean; daysDone: Set<number>; todayIdx: number; now: number }) {
+  const { f } = useScale();
   const _ = useT();
   const t = useTheme();
   const adherence = weeklyAdherence(
@@ -427,24 +431,26 @@ function PlanStrip({ plan, hasPlan, daysDone, todayIdx, now }: { plan: Awaited<R
             const planned = d.routine_id != null;
             const status: DayStatus = dayStatus(planned, daysDone.has(i), weekDayTs(now, i), now);
             const isToday = i === todayIdx;
+            const dc = t.days[i];
             return (
-              <View key={i} style={{ alignItems: 'center', gap: 4, flex: 1 }} accessible accessibilityLabel={`${weekdayNames()[i]}: ${d.routine_name ? routineLabel(d.routine_name) : _('common.rest_lower')}${status === 'done' ? _('home.done') : status === 'missed' ? _('home.missed') : ''}`}>
-                <T variant="caption" color={isToday ? t.primary : t.textMuted} style={{ fontSize: 10, fontFamily: isToday ? Font.heavy : Font.regular }}>
+              <View key={i} style={[{ alignItems: 'center', gap: 4, flex: 1, borderRadius: Radius.sm, paddingVertical: 3 }, isToday && { backgroundColor: dc.soft }]} accessible accessibilityLabel={`${weekdayNames()[i]}: ${d.routine_name ? routineLabel(d.routine_name) : _('common.rest_lower')}${status === 'done' ? _('home.done') : status === 'missed' ? _('home.missed') : ''}`}>
+                <T variant="caption" color={dc.color} style={{ fontSize: 10, fontFamily: isToday ? Font.heavy : Font.bold }}>
                   {weekdayLetters()[i]}
                 </T>
                 <View
                   style={[
                     styles.planDot,
-                    status === 'done' && { backgroundColor: t.primary, borderColor: t.primary },
-                    status === 'upcoming' && { borderColor: t.primary },
-                    status === 'missed' && { borderColor: t.gold, opacity: 0.55, borderStyle: 'dashed' },
+                    { width: f(28), height: f(28), borderRadius: f(14) },
+                    status === 'done' && { backgroundColor: dc.color, borderColor: dc.color },
+                    status === 'upcoming' && { borderColor: dc.color },
+                    status === 'missed' && { borderColor: dc.color, opacity: 0.55, borderStyle: 'dashed' },
                     status === 'rest' && { borderColor: t.border, backgroundColor: t.surfacePressed },
                     isToday && { borderWidth: 2.5 },
                   ]}>
                   {status === 'done' && <Icon name="check" size={13} color={t.onPrimary} weight="bold" />}
-                  {status === 'missed' && <Icon name="close" size={11} color={t.gold} weight="bold" />}
+                  {status === 'missed' && <Icon name="close" size={11} color={dc.color} weight="bold" />}
                 </View>
-                <T variant="caption" color={planned ? (status === 'missed' ? t.textMuted : t.textSecondary) : t.textMuted} numberOfLines={1} style={{ fontSize: 9 }}>
+                <T variant="caption" color={planned ? dc.color : t.textMuted} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={{ fontSize: 9, opacity: status === 'missed' ? 0.6 : 1 }}>
                   {planned ? shortRoutineName(d.routine_name, 6) : '–'}
                 </T>
               </View>

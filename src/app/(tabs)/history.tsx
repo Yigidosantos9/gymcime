@@ -12,16 +12,17 @@ import { Badge, Button, Card, EmptyState, IconButton, PressableScale, ScreenHead
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { getWeekPlan, listWorkouts, workoutsBetween, type WorkoutListItem } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
-import { useTheme } from '@/hooks/use-theme';
+import { useScale, useTheme } from '@/hooks/use-theme';
 import { formatMinutes, startOfDay } from '@/lib/format';
 import { beginWorkout } from '@/lib/start-workout';
-import { dayStatus, monthNames, monthGrid, shiftMonth, shortRoutineName, weekdayNames, weekdayShort, weekdayOf } from '@/lib/week-plan';
+import { calendarColorIndex, dayStatus, monthNames, monthGrid, shiftMonth, shortRoutineName, weekdayNames, weekdayShort, weekdayOf } from '@/lib/week-plan';
 import { useT } from '@/components/language-provider';
 import { localeData } from '@/i18n';
 import { routineLabel } from '@/i18n/labels';
 
 
 export default function History() {
+  const { f } = useScale();
   const _ = useT();
   const t = useTheme();
   const { data } = useDbQuery((db) => listWorkouts(db, 500));
@@ -80,7 +81,7 @@ export default function History() {
               <PressableScale onPress={() => router.push(`/session/${item.id}`)} scaleTo={0.98}>
                 <Card style={{ marginBottom: Spacing.sm }}>
                   <View style={{ flexDirection: 'row', gap: Spacing.md }}>
-                    <View style={[styles.date, { backgroundColor: t.surfaceRaised }]}>
+                    <View style={[styles.date, { backgroundColor: t.surfaceRaised, width: f(46), height: f(52) }]}>
                       <T variant="caption" secondary style={{ fontSize: 10 }}>
                         {localeData().daysShort[d.getDay()]}
                       </T>
@@ -138,8 +139,7 @@ function MonthCalendar() {
   );
   const [now] = useState(() => Date.now());
   const today = startOfDay(now);
-  const palette = [t.primary, t.gold, t.violet, t.success, t.danger];
-  const colorOf = (routineId: number | null) => (routineId == null ? t.textSecondary : palette[routineId % palette.length]);
+  const plan = data?.plan ?? [];
 
   const byDay = new Map<number, NonNullable<typeof data>['workouts']>();
   for (const w of data?.workouts ?? []) {
@@ -183,8 +183,8 @@ function MonthCalendar() {
         <IconButton icon="chevronRight" label={_('history.next_month')} onPress={() => setYm((c) => shiftMonth(c.year, c.month, 1))} bg="transparent" color={t.textSecondary} size={14} />
       </View>
       <View style={{ flexDirection: 'row', marginBottom: 4 }}>
-        {weekdayShort().map((d) => (
-          <T key={d} variant="caption" muted style={{ flex: 1, textAlign: 'center', fontSize: 10 }}>
+        {weekdayShort().map((d, i) => (
+          <T key={d} variant="caption" color={t.days[i].color} numberOfLines={1} style={{ flex: 1, textAlign: 'center', fontSize: 10, fontFamily: Font.bold }}>
             {d}
           </T>
         ))}
@@ -197,7 +197,8 @@ function MonthCalendar() {
             const isPlanned = planned?.routine_id != null;
             const status = dayStatus(isPlanned, ws.length > 0, c.ts, now);
             const isToday = c.ts === today;
-            const color = ws.length > 0 ? colorOf(ws[0].routine_id) : colorOf(planned?.routine_id ?? null);
+            const dc = t.days[calendarColorIndex(plan, ws.length > 0 ? ws[0].routine_id : (planned?.routine_id ?? null), c.ts)];
+            const color = dc.color;
             const label = ws.length > 0 ? shortRoutineName(ws[0].name, 5) : status === 'upcoming' || status === 'missed' ? shortRoutineName(planned?.routine_name, 5) : '';
             return (
               <PressableScale
@@ -209,7 +210,7 @@ function MonthCalendar() {
                 style={[
                   styles.calCell,
                   { opacity: c.inMonth ? 1 : 0.35 },
-                  status === 'done' && { backgroundColor: color + '33', borderColor: color },
+                  status === 'done' && { backgroundColor: dc.soft, borderColor: color },
                   status === 'upcoming' && { borderColor: color, borderStyle: 'dashed', opacity: c.inMonth ? 0.6 : 0.3 },
                   status === 'missed' && { borderColor: t.border, borderStyle: 'dashed', opacity: c.inMonth ? 0.4 : 0.2 },
                   isToday && { borderWidth: 2, borderColor: t.primary, borderStyle: 'solid' },
@@ -217,7 +218,7 @@ function MonthCalendar() {
                 <T variant="label" color={status === 'done' ? t.text : t.textSecondary} style={{ fontSize: 12, fontFamily: isToday ? Font.heavy : Font.medium }}>
                   {new Date(c.ts).getDate()}
                 </T>
-                <T variant="caption" color={status === 'done' ? color : t.textMuted} numberOfLines={1} style={{ fontSize: 8, lineHeight: 10 }}>
+                <T variant="caption" color={status === 'done' || status === 'upcoming' ? color : t.textMuted} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ fontSize: 8, lineHeight: 10 }}>
                   {label || ' '}
                 </T>
                 {ws.length > 1 && <View style={[styles.multi, { backgroundColor: color }]} />}

@@ -1,11 +1,11 @@
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { MuscleIcon } from '@/components/body-map';
 import { Icon } from '@/components/icon';
 import { useSheet, type SheetAction } from '@/components/sheet';
-import { Badge, Button, Card, PressableScale, Stat, T } from '@/components/ui';
+import { Badge, Button, Card, Input, PressableScale, Stat, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import {
   addHistorySet,
@@ -155,7 +155,7 @@ export default function Session() {
           />
         </View>
         {editing ? (
-          <TextInput
+          <Input
             value={name}
             onChangeText={setName}
             onEndEditing={saveMeta}
@@ -180,7 +180,7 @@ export default function Session() {
         </Card>
 
         {editing ? (
-          <TextInput
+          <Input
             value={note}
             onChangeText={setNote}
             onEndEditing={saveMeta}
@@ -402,7 +402,7 @@ function EditSetRow({
         </PressableScale>
         {timeBased ? (
           <>
-            <TextInput
+            <Input
               value={dur}
               onChangeText={setDur}
               onEndEditing={saveValues}
@@ -415,7 +415,7 @@ function EditSetRow({
             />
             {isCardio && (
               <>
-                <TextInput
+                <Input
                   value={dist}
                   onChangeText={setDist}
                   onEndEditing={saveValues}
@@ -426,7 +426,7 @@ function EditSetRow({
                   accessibilityLabel={_('session.set_distance', { label: label })}
                   style={[styles.input, { backgroundColor: t.surface, color: t.text }]}
                 />
-                <TextInput
+                <Input
                   value={lvl}
                   onChangeText={setLvl}
                   onEndEditing={saveValues}
@@ -442,7 +442,7 @@ function EditSetRow({
           </>
         ) : (
           <>
-        <TextInput
+        <Input
           value={w}
           onChangeText={setW}
           onEndEditing={saveValues}
@@ -456,7 +456,7 @@ function EditSetRow({
         <T variant="label" muted>
           ×
         </T>
-        <TextInput
+        <Input
           value={r}
           onChangeText={setR}
           onEndEditing={saveValues}
@@ -480,7 +480,7 @@ function EditSetRow({
           <Icon name="trash" size={16} color={t.danger} />
         </PressableScale>
       </View>
-      <TextInput
+      <Input
         value={note}
         onChangeText={setNote}
         onEndEditing={async () => {

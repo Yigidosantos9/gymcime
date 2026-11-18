@@ -24,7 +24,7 @@ import {
 } from '@/db/nutrition-queries';
 import { listBodyWeights } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
-import { useTheme } from '@/hooks/use-theme';
+import { useScale, useTheme } from '@/hooks/use-theme';
 import { formatWeight } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import {
@@ -60,6 +60,7 @@ function dayLabel(key: string) {
 }
 
 export default function Nutrition() {
+  const { f } = useScale();
   const _ = useT();
   const t = useTheme();
   const sheet = useSheet();
@@ -149,7 +150,7 @@ export default function Nutrition() {
         {!target && (
           <PressableScale onPress={() => router.push('/body')} style={{ marginBottom: Spacing.lg }}>
             <Card style={{ flexDirection: 'row', alignItems: 'center', gap: Spacing.md }} raised>
-              <View style={[styles.iconBox, { backgroundColor: t.primarySoft }]}>
+              <View style={[styles.iconBox, { backgroundColor: t.primarySoft, width: f(44), height: f(44), borderRadius: f(22) }]}>
                 <Icon name="target" size={20} color={t.primary} />
               </View>
               <View style={{ flex: 1 }}>

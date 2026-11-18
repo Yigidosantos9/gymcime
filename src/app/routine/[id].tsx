@@ -1,7 +1,7 @@
 import { router, Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BackHandler, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
+import { BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedRef, useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 
 import { MuscleIcon } from '@/components/body-map';
@@ -9,7 +9,7 @@ import { DragList } from '@/components/drag-list';
 import { HeaderBack } from '@/components/header-back';
 import { Icon } from '@/components/icon';
 import { useSheet } from '@/components/sheet';
-import { Button, Card, IconButton, PressableScale, T } from '@/components/ui';
+import { Button, Card, IconButton, Input, PressableScale, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { deleteRoutine, getExercise, getProfile, getRoutine, saveRoutine, type RoutineItem } from '@/db/queries';
 import { useTheme } from '@/hooks/use-theme';
@@ -261,7 +261,7 @@ export default function RoutineEditor() {
         scrollEnabled={!dragging}
         contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 60 }}
         keyboardShouldPersistTaps="handled">
-        <TextInput
+        <Input
           value={name}
           onChangeText={setName}
           placeholder={_('routine.routine_name_e_g_back')}

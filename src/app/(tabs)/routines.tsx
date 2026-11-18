@@ -12,16 +12,17 @@ import { Badge, Button, Card, Chip, EmptyState, IconButton, PressableScale, Scre
 import { Spacing } from '@/constants/theme';
 import { deleteRoutine, duplicateRoutine, getSetting, getWeekPlan, listRoutines, reorderRoutines, setSetting, sortRoutines, type RoutineSort, type RoutineSummary } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
-import { useTheme } from '@/hooks/use-theme';
+import { useScale, useTheme } from '@/hooks/use-theme';
 import { formatDayLong } from '@/lib/format';
 import { syncReminders } from '@/lib/reminder-io';
 import { beginWorkout } from '@/lib/start-workout';
-import { weekdayShort } from '@/lib/week-plan';
+import { routineWeekdays, weekdayShort } from '@/lib/week-plan';
 import { currentLocale } from '@/i18n';
 import { useT } from '@/components/language-provider';
 import { routineLabel } from '@/i18n/labels';
 
 export default function Routines() {
+  const { f } = useScale();
   const _ = useT();
   const SORTS: { key: RoutineSort; label: string }[] = [
     { key: 'manual', label: _('routines.manual') },
@@ -104,7 +105,7 @@ export default function Routines() {
 
         <PressableScale onPress={() => router.push('/week-plan')} scaleTo={0.98} accessibilityLabel={_('common.weekly_plan')}>
           <Card style={{ marginBottom: Spacing.lg, flexDirection: 'row', alignItems: 'center', gap: Spacing.md }}>
-            <View style={[styles.planIcon, { backgroundColor: t.primarySoft }]}>
+            <View style={[styles.planIcon, { width: f(40), height: f(40) }, { backgroundColor: t.primarySoft }]}>
               <Icon name="history" size={18} color={t.primary} />
             </View>
             <View style={{ flex: 1, gap: 2 }}>
@@ -134,6 +135,7 @@ export default function Routines() {
 
         {routines?.map((r, i) => {
           const muscles = r.muscles?.split(',') ?? [];
+          const assigned = routineWeekdays(data?.plan ?? [], r.id);
           return (
             <Animated.View key={r.id} entering={FadeInDown.delay(i * 50).duration(350)}>
               <PressableScale onPress={() => router.push(`/routine/${r.id}`)} onLongPress={() => openMenu(r)} delayLongPress={350} scaleTo={0.98}>
@@ -154,6 +156,13 @@ export default function Routines() {
                       </>
                     )}
                   </View>
+                  {assigned.length > 0 && (
+                    <View style={styles.dayBadges}>
+                      {assigned.map((wd) => (
+                        <Badge key={wd} label={weekdayShort()[wd]} tint={t.days[wd].color} bg={t.days[wd].soft} />
+                      ))}
+                    </View>
+                  )}
                   {muscles.length > 0 && (
                     <View style={styles.muscles}>
                       {muscles.slice(0, 4).map((m) => (
@@ -186,6 +195,7 @@ export default function Routines() {
 
 const styles = StyleSheet.create({
   planIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  dayBadges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: Spacing.sm },
   sortRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.md },
   actions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, marginTop: Spacing.md },
   muscles: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md, marginTop: Spacing.md, alignItems: 'center' },

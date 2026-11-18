@@ -305,7 +305,7 @@ Kullanıcı isteği: haftanın günlerine rutin ata, takvimde görünsün. (Gör
 > İçerik: `exercise-media.ts` → `steps: { tr, en }` (İngilizce kaynak git `b3a2f1c`'den; `kb-swing` İngilizcesi elle yazıldı), `muscleName`; yiyeceklere `nameEn` (`src/data/foods-en.ts`), arama iki dilde, kategori adları ve porsiyon etiketleri (`portionLabel`) çevrilir. AI rehberi/yemek tahmini seçili dilde istenir; DB v11: `exercise_guides` (exercise_id, lang) anahtarlı — rehber önbelleği dile göre ayrı (eski rehberler `tr`). Testler: `tests/i18n.test.ts` (anahtar/parametre/çoğul eşliği, Türkçe sabit metin taraması, biçimlendirme, etiketler, öneri/AI/hatırlatıcı, rehber önbelleği + migrasyon, yiyecek adları).
 > Bilinen sınırlar: kullanıcının girdiği metinler (rutin/antrenman adı, notlar, özel egzersiz) ve KAYITLI geçmiş metinler (öğün kaydının adı/porsiyonu, eski AI çıktıları) çevrilmez; egzersiz adları İngilizce kalır; iOS sistem izin penceresi metinleri (Info.plist) yerelleştirilmedi; tarih ayırıcı/saat 24 saat biçimi iki dilde aynı.
 
-## Görev 2.13 — Görsel büyütme + günlere özel renkler + yazı boyutu ayarı  `[ ]`
+## Görev 2.13 — Görsel büyütme + günlere özel renkler + yazı boyutu ayarı  `[x]`
 1. **Tasarım sistemi ölçeği** (`src/constants/theme.ts`, `src/components/ui.tsx`): tüm metin varyantları (`T`), ikon varsayılan boyutları,
    buton yükseklikleri, Chip/Badge/IconButton boyutları, kart iç boşlukları, set satırı girişleri (antrenman ekranı kg/tekrar kutuları),
    BodyMap ve MuscleIcon boyutları büyüsün. Varsayılan "Büyük" ölçek ≈ mevcut değerlerin %115'i; dokunma hedefleri ≥ 44 pt.
@@ -326,6 +326,10 @@ Kullanıcı isteği: haftanın günlerine rutin ata, takvimde görünsün. (Gör
    hesabıyla AA ≥ 4.5 metin için), font_scale ayarının okunup yazılması; mevcut testler geçmeli.
 5. **Doğrulama:** simülatörde development build ile en fazla 4 ekran görüntüsü: ana sayfa (Büyük), antrenman ekranı (Çok büyük — taşma yok),
    haftalık plan, Geçmiş takvimi.
+
+> **Not (Görev 2.13 tamamlandı):** Ölçek tek kaynaktan: `theme.ts` (`FONT_SCALES` 1/1.15/1.3, `scaled`/`scaledSpace`/`touchSize`, `MIN_TOUCH` 44) + `ThemeProvider` (`scale`, `fontScale`, `setFontScale`; `settings.font_scale`, varsayılan Büyük; tercih okunana kadar çizmez) + `useScale()` (`f/s/touch`). `T` tüm varyantları ve ekranlardaki satır içi `fontSize/lineHeight`'ı ölçekler (+ `maxFontSizeMultiplier` 1.25), `Icon` boyutu, Button/Chip/IconButton/Card/Ring/EmptyState, yeni `Input` (TextInput sarmalayıcı; workout dışındaki tüm girişler), BodyMap/MuscleIcon ölçeklenir. Antrenman ekranı `useStyles()` ile set tablosunu ölçekler (SET/ÖNCEKİ/KG/TEKRAR başlıkları ve önceki sütunu `adjustsFontSizeToFit`). Ölçek context'ten geldiği için alt ağacı yeniden kurmak (`key`) gerekmedi.
+> Ayarlar → Görünüm: Yazı boyutu (Normal/Büyük/Çok büyük). Günlere özel palet `theme.days[0..6]` ({color, soft}; koyu: #FF8A7A #FBBF24 #A3E635 #2DD4BF #60A5FA #B794F6 #F472B6, açık: #C2301F #8A5806 #41690C #0D6D65 #1D4ED8 #7C3AED #BE185D). Kullanım: ana sayfa hafta noktaları + plan şeridi, Haftalık plan satırları (renkli şerit/rozet), Geçmiş takvimi (`calendarColorIndex`: rutinin atandığı ilk gün; plan yoksa haftanın günü), rutin kartlarında gün rozetleri. Gün harfi/etiket her zaman görünür.
+> Testler: `tests/design-scale.test.ts` (ölçek, palet 7×2 + WCAG AA ≥ 4.5: renk/zemin/kart/soft, onPrimary/renk; font_scale okuma/yazma; takvim renk indeksi). `scripts/test.mjs`'e `.css` boş loader'ı eklendi (theme.ts testlerde import edilebilsin). Simülatör: ana sayfa (Büyük), antrenman (Çok büyük), haftalık plan, Geçmiş takvimi görüldü — taşma yok. Tıklama aracı olmadığı için Ayarlar'daki yazı boyutu seçici etkileşimi ve bazı ikincil ekranlar (beslenme, ilerleme, özet) cihazda gözle denenmeli.
 
 ## Görev Havuzu (öncelik sırası; kullanıcı onayıyla seçilecek)
 - **Barkod okuma** (expo-camera; Open Food Facts ücretsiz API — kullanıcı verisi göndermeden ürün sorgusu) → beslenmeye hızlı ekleme.

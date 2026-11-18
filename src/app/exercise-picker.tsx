@@ -1,13 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, ScrollView, StyleSheet, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MuscleIcon } from '@/components/body-map';
 import { CreateExerciseForm } from '@/components/create-exercise';
 import { Icon } from '@/components/icon';
-import { Badge, Button, Chip, IconButton, PressableScale, T } from '@/components/ui';
+import { Badge, Button, Chip, IconButton, Input, PressableScale, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { addExercisesToWorkout, addHistoryExercise, getWorkoutExerciseIds, listExercises } from '@/db/queries';
 import { useSheet } from '@/components/sheet';
@@ -91,7 +91,7 @@ export default function ExercisePicker() {
         </View>
         <View style={[styles.search, { backgroundColor: t.surfaceRaised, borderColor: t.border }]}>
           <Icon name="search" size={16} color={t.textMuted} />
-          <TextInput
+          <Input
             value={q}
             onChangeText={setQ}
             placeholder={_('exercisePicker.search_bench_squat_curl')}

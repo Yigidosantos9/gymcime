@@ -940,6 +940,11 @@ export const tr = {
   'prog.bwNote': '{eff} → sonraki set {reps} tekrar',
   'start.activeTitle': 'Devam eden antrenman var',
   'start.continue': 'Ona devam et',
+  'settings.font_size': 'Yazı boyutu',
+  'settings.font_normal': 'Normal (%100)',
+  'settings.font_large': 'Büyük (%115)',
+  'settings.font_xlarge': 'Çok büyük (%130)',
+  'settings.font_hint': 'Yazılar, ikonlar ve düğmeler birlikte büyür; iOS sistem yazı boyutu ayarı da (makul bir sınıra kadar) uygulanır.',
   // @@ADD
 } satisfies Record<string, Msg>;
 

@@ -1,4 +1,5 @@
 import { SymbolView, type AndroidSymbol, type SFSymbol, type SymbolWeight } from 'expo-symbols';
+import { useScale } from '@/hooks/use-theme';
 import type { ColorValue, StyleProp, ViewStyle } from 'react-native';
 
 /**
@@ -69,7 +70,7 @@ export type IconName = keyof typeof ICONS;
 
 export function Icon({
   name,
-  size = 20,
+  size: sizeProp = 20,
   color,
   weight = 'semibold',
   style,
@@ -81,6 +82,8 @@ export function Icon({
   style?: StyleProp<ViewStyle>;
 }) {
   const [ios, android] = ICONS[name];
+  const { f } = useScale();
+  const size = f(sizeProp);
   return (
     <SymbolView
       name={{ ios, android, web: android }}

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Keyboard, Platform, StyleSheet, TextInput, View } from 'react-native';
+import { Keyboard, Platform, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { useSheet } from '@/components/sheet';
-import { Button, T } from '@/components/ui';
+import { Button, Input, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { t as tt } from '@/i18n';
@@ -38,7 +38,7 @@ function NameForm({ close, initial, confirmLabel, onSubmit, placeholder, hint, a
   };
   return (
     <View style={{ gap: Spacing.md, paddingBottom: space }}>
-      <TextInput
+      <Input
         value={name}
         onChangeText={setName}
         autoFocus

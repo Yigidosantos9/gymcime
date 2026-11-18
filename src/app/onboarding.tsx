@@ -3,13 +3,13 @@ import { router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import Animated, { FadeInRight, FadeOutLeft } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BodyMap } from '@/components/body-map';
 import { Icon, type IconName } from '@/components/icon';
-import { Chip, PressableScale, T } from '@/components/ui';
+import { Chip, Input, PressableScale, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { createRoutinesFromTemplate, saveProfile } from '@/db/queries';
 import { useTheme } from '@/hooks/use-theme';
@@ -106,7 +106,7 @@ export default function Onboarding() {
                 <T variant="display">{_('onboarding.welcome_to_gymcime')}</T>
                 <T secondary style={{ fontSize: 16, lineHeight: 23 }}>{_('onboarding.log_your_workouts_see_your')}</T>
                 <T variant="overline" secondary style={{ marginTop: Spacing.lg }}>{_('onboarding.what_should_we_call_you')}</T>
-                <TextInput
+                <Input
                   value={name}
                   onChangeText={setName}
                   placeholder={_('common.your_name')}

@@ -33,7 +33,7 @@ import {
   type WorkoutExerciseFull,
 } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
-import { useTheme } from '@/hooks/use-theme';
+import { useScale, useTheme } from '@/hooks/use-theme';
 import { formatDuration, formatWeight, parseNumber } from '@/lib/format';
 import { formatClock, formatHold, formatKm, isTimeBased, parseClock, parseHold, parseKm } from '@/lib/cardio';
 import { haptic } from '@/lib/haptics';
@@ -97,6 +97,7 @@ type Sheet = ReturnType<typeof useSheet>;
 
 export default function WorkoutScreen() {
   const _ = useT();
+  const styles = useStyles();
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const sheet = useSheet();
@@ -375,6 +376,7 @@ function EffortPanel({
   onClose: () => void;
 }) {
   const _ = useT();
+  const styles = useStyles();
   const t = useTheme();
   const colors: Record<number, [string, string]> = {
     4: [t.success, t.successSoft],
@@ -456,6 +458,7 @@ function ExerciseBlock({
   onSetDone: (set: SetRowData, isPr: boolean) => void;
 }) {
   const _ = useT();
+  const styles = useStyles();
   const t = useTheme();
   const sug = ex.suggestion;
   const sugColor = KIND_COLOR(t)[sug.kind];
@@ -627,19 +630,19 @@ function ExerciseBlock({
       )}
 
       <View style={styles.headRow}>
-        <T variant="overline" muted style={styles.colSet}>{_('common.sets')}</T>
+        <T variant="overline" muted style={styles.colSet} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{_('common.sets')}</T>
         {!isCardio && (
-          <T variant="overline" muted style={styles.colPrev}>{_('common.previous')}</T>
+          <T variant="overline" muted style={styles.colPrev} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{_('common.previous')}</T>
         )}
         {timeBased ? (
           <>
-            <T variant="overline" muted style={styles.colInput}>
+            <T variant="overline" muted style={styles.colInput} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
               {isCardio ? _('workout.time_min_sec') : _('common.duration')}
             </T>
             {isCardio && (
               <>
-                <T variant="overline" muted style={styles.colInput}>{_('workout.distance_km')}</T>
-                <T variant="overline" muted style={styles.colInput}>{_('workout.incline_lvl')}</T>
+                <T variant="overline" muted style={styles.colInput} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{_('workout.distance_km')}</T>
+                <T variant="overline" muted style={styles.colInput} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{_('workout.incline_lvl')}</T>
               </>
             )}
           </>
@@ -651,11 +654,11 @@ function ExerciseBlock({
                 <Icon name="barbell" size={10} color={t.primary} />
               </PressableScale>
             ) : (
-              <T variant="overline" muted style={styles.colInput}>
+              <T variant="overline" muted style={styles.colInput} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                 {ex.kind === 'bodyweight' ? _('workout.kg2') : _('common.kg')}
               </T>
             )}
-            <T variant="overline" muted style={styles.colInput}>{_('workout.reps3')}</T>
+            <T variant="overline" muted style={styles.colInput} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{_('workout.reps3')}</T>
           </>
         )}
         <View style={styles.colCheck} />
@@ -791,6 +794,7 @@ function computePlanRows(ex: WorkoutExerciseFull, step: number) {
 
 function RulesSheet({ step }: { step: number }) {
   const _ = useT();
+  const styles = useStyles();
   const t = useTheme();
   return (
     <View style={{ gap: Spacing.md }}>
@@ -815,6 +819,7 @@ function RulesSheet({ step }: { step: number }) {
 
 function RestPicker({ current, onPick }: { current: number; onPick: (secs: number, always: boolean) => void }) {
   const _ = useT();
+  const styles = useStyles();
   const t = useTheme();
   const [value, setValue] = useState(current);
   return (
@@ -845,7 +850,9 @@ function RestPicker({ current, onPick }: { current: number; onPick: (secs: numbe
 // ───────────────────────── Set satırı ─────────────────────────
 
 function SetNoteEditor({ initial, onSave }: { initial: string; onSave: (text: string) => void | Promise<void> }) {
+  const { f } = useScale();
   const _ = useT();
+  const styles = useStyles();
   const t = useTheme();
   const [text, setText] = useState(initial);
   return (
@@ -858,7 +865,7 @@ function SetNoteEditor({ initial, onSave }: { initial: string; onSave: (text: st
         placeholder={_('workout.e_g_shoulder_twinged_slightly')}
         placeholderTextColor={t.textMuted}
         accessibilityLabel={_('workout.set_note')}
-        style={[styles.input, { height: 48, paddingHorizontal: Spacing.md, fontFamily: Font.medium, fontSize: 15, textAlign: 'left', backgroundColor: t.surfaceRaised, color: t.text }]}
+        style={[styles.input, { height: 48, paddingHorizontal: Spacing.md, fontFamily: Font.medium, fontSize: f(15), textAlign: 'left', backgroundColor: t.surfaceRaised, color: t.text }]}
       />
       <Button title={_('common.save')} icon="check" onPress={() => onSave(text)} />
     </View>
@@ -893,6 +900,7 @@ function SetRow({
   onChanged: () => void;
 }) {
   const _ = useT();
+  const styles = useStyles();
   const t = useTheme();
   const [w, setW] = useState(set.weight != null ? formatWeight(set.weight) : '');
   const [r, setR] = useState(set.reps != null ? String(set.reps) : '');
@@ -1046,7 +1054,7 @@ function SetRow({
           </View>
         </PressableScale>
         {isCardio ? null : timeBased ? (
-          <T variant="label" muted style={styles.colPrev} numberOfLines={1}>
+          <T variant="label" muted style={styles.colPrev} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
             {prevLabel}
           </T>
         ) : done && type !== 'warmup' ? (
@@ -1058,7 +1066,7 @@ function SetRow({
             </View>
           </PressableScale>
         ) : (
-          <T variant="label" muted style={styles.colPrev} numberOfLines={1}>
+          <T variant="label" muted style={styles.colPrev} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
             {prevLabel}
           </T>
         )}
@@ -1156,7 +1164,29 @@ function SetRow({
   );
 }
 
-const styles = StyleSheet.create({
+/** Ölçeğe göre büyüyen boyutlar (set tablosu, butonlar); kalan stiller sabit. Dokunma hedefi ≥ 44 pt. */
+function useStyles() {
+  const { f, touch } = useScale();
+  return {
+    ...baseStyles,
+    finishBtn: { ...baseStyles.finishBtn, height: touch(40), borderRadius: touch(40) / 2 },
+    restChip: { ...baseStyles.restChip, height: f(28), borderRadius: f(14) },
+    helpBtn: { ...baseStyles.helpBtn, width: f(20), height: f(20), borderRadius: f(10) },
+    colSet: { ...baseStyles.colSet, width: f(34) },
+    colCheck: { ...baseStyles.colCheck, width: f(42) },
+    setBadge: { ...baseStyles.setBadge, width: f(28), height: f(28), borderRadius: f(9) },
+    input: { ...baseStyles.input, height: touch(40), fontSize: f(17) },
+    check: { ...baseStyles.check, width: f(38), height: f(38), borderRadius: f(12) },
+    effort: { ...baseStyles.effort, height: f(24), borderRadius: f(12) },
+    effortBtn: { ...baseStyles.effortBtn, height: touch(46) },
+    preset: { ...baseStyles.preset, height: touch(44), minWidth: f(58) },
+    addSet: { ...baseStyles.addSet, height: touch(38) },
+    swipeDelete: { ...baseStyles.swipeDelete, width: f(64) },
+    restNote: { ...baseStyles.restNote, paddingLeft: f(44) },
+  };
+}
+
+const baseStyles = StyleSheet.create({
   topBar: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.md },
   finishBtn: { paddingHorizontal: 20, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   exHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },

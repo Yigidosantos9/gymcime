@@ -1,13 +1,13 @@
 import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { FlatList, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { FlatList, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MuscleIcon } from '@/components/body-map';
 import { CreateExerciseForm } from '@/components/create-exercise';
 import { Icon } from '@/components/icon';
-import { Button, Chip, PressableScale, T } from '@/components/ui';
+import { Button, Chip, Input, PressableScale, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { getExerciseMedia } from '@/db/exercise-media';
 import { listExercises } from '@/db/queries';
@@ -38,7 +38,7 @@ export default function ExerciseLibrary() {
       <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.md, paddingBottom: Spacing.sm }}>
         <View style={[styles.search, { backgroundColor: t.surfaceRaised, borderColor: t.border }]}>
           <Icon name="search" size={16} color={t.textMuted} />
-          <TextInput
+          <Input
             value={q}
             onChangeText={setQ}
             placeholder={_('exercises.search_bench_back_triceps')}

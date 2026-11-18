@@ -106,6 +106,27 @@ export function muscleFrequency(dayMuscles: string[][]) {
   return [...count.entries()].map(([muscle, days]) => ({ muscle, days })).sort((a, b) => b.days - a.days || a.muscle.localeCompare(b.muscle, 'tr'));
 }
 
+/** Rutinin plana atandığı günler (0-6, artan). */
+export function routineWeekdays(plan: readonly { routine_id: number | null }[], routineId: number | null | undefined): number[] {
+  if (routineId == null) return [];
+  const out: number[] = [];
+  plan.forEach((d, i) => {
+    if (d.routine_id === routineId) out.push(i);
+  });
+  return out;
+}
+
+/**
+ * Takvimde bir günün renk indeksi (0-6, `theme.days`): antrenmanın rutini plana atanmışsa atandığı İLK günün rengi
+ * (bugün o güne denk geliyorsa bugünün haftanın günü rengi); rutin plana atanmamışsa / plan yoksa günün haftanın günü rengi.
+ */
+export function calendarColorIndex(plan: readonly { routine_id: number | null }[], routineId: number | null | undefined, dayTs: number): number {
+  const wd = weekdayOf(dayTs);
+  const assigned = routineWeekdays(plan, routineId);
+  if (assigned.length === 0 || assigned.includes(wd)) return wd;
+  return assigned[0];
+}
+
 /** Rutin adından takvimde gösterilecek kısa etiket (ilk kelime, en çok `max` harf). */
 export function shortRoutineName(name: string | null | undefined, max = 5) {
   if (!name) return '';

@@ -1,20 +1,20 @@
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { Icon, type IconName } from '@/components/icon';
 import { ReminderSettingsSection } from '@/components/reminder-settings';
 import { useSheet } from '@/components/sheet';
 import { useThemeContext } from '@/components/theme-provider';
-import { Button, Card, Chip, PressableScale, SectionHeader, T } from '@/components/ui';
-import { Font, Radius, Spacing, type ThemePreference } from '@/constants/theme';
+import { Button, Card, Chip, Input, PressableScale, SectionHeader, T } from '@/components/ui';
+import { FONT_SCALE_KEYS, Font, Radius, Spacing, type ThemePreference } from '@/constants/theme';
 import { clearApiKey, getModelPref, hasApiKey, saveModelPref, setApiKey, testConnection, type ModelPref } from '@/lib/ai';
 import { AiError } from '@/lib/ai-core';
 import { backupCounts, importBackup, BackupError } from '@/db/backup';
 import { pickBackup, shareBackup } from '@/lib/backup-io';
 import { deleteAllData, getProfile, saveProfile, type Profile } from '@/db/queries';
-import { useTheme } from '@/hooks/use-theme';
+import { useScale, useTheme } from '@/hooks/use-theme';
 import { dayWarning, notRecommended, WEEK_DAYS } from '@/lib/goals';
 import { ALL_PLATES, BAR_OPTIONS } from '@/lib/plates';
 import { RECOVERY_OPTIONS } from '@/lib/recovery';
@@ -40,7 +40,7 @@ export default function Settings() {
   const t = useTheme();
   const db = useSQLiteContext();
   const sheet = useSheet();
-  const { preference, setPreference, reload: reloadTheme } = useThemeContext();
+  const { preference, setPreference, reload: reloadTheme, fontScale, setFontScale } = useThemeContext();
   const [profile, setProfile] = useState<Profile | null>(null);
 
   useEffect(() => {
@@ -97,6 +97,29 @@ export default function Settings() {
         })}
       </View>
 
+      <SectionHeader title={_('settings.font_size')} />
+      <View style={{ gap: Spacing.sm }}>
+        {FONT_SCALE_KEYS.map((k) => {
+          const active = fontScale === k;
+          return (
+            <PressableScale
+              key={k}
+              onPress={() => setFontScale(k)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              style={[styles.fontBtn, { backgroundColor: active ? t.primarySoft : t.surface, borderColor: active ? t.primary : t.border }]}>
+              <T variant="label" color={active ? t.primary : t.textSecondary}>
+                {_(`settings.font_${k}` as const)}
+              </T>
+              {active && <Icon name="check" size={14} color={t.primary} weight="bold" />}
+            </PressableScale>
+          );
+        })}
+      </View>
+      <T variant="caption" muted style={{ marginTop: Spacing.sm }}>
+        {_('settings.font_hint')}
+      </T>
+
       <SectionHeader title={_('settings.language')} />
       <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
         {(
@@ -128,7 +151,7 @@ export default function Settings() {
       <SectionHeader title={_('settings.profile')} />
       <Card style={{ gap: Spacing.md }}>
         <T variant="label" secondary>{_('common.your_name')}</T>
-        <TextInput
+        <Input
           value={profile.name}
           onChangeText={(name) => setProfile({ ...profile, name })}
           onEndEditing={() => update({})}
@@ -351,6 +374,7 @@ function DataSettings() {
 }
 
 function AiSettings() {
+  const { f } = useScale();
   const _ = useT();
   const t = useTheme();
   const db = useSQLiteContext();
@@ -436,7 +460,7 @@ function AiSettings() {
         </View>
         <T variant="caption" muted>{_('settings.the_key_is_stored_only')}</T>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TextInput
+          <Input
             value={draft}
             onChangeText={setDraft}
             placeholder={saved ? _('settings.replace_with_a_new_key') : 'sk-ant-...'}
@@ -448,7 +472,7 @@ function AiSettings() {
             textContentType="none"
             style={[styles.input, { flex: 1, backgroundColor: t.surfaceRaised, color: t.text, fontFamily: undefined }]}
           />
-          <PressableScale onPress={() => setShow((v) => !v)} style={[styles.eye, { backgroundColor: t.surfaceRaised }]}>
+          <PressableScale onPress={() => setShow((v) => !v)} style={[styles.eye, { backgroundColor: t.surfaceRaised, width: f(48), height: f(48) }]}>
             <Icon name={show ? 'close' : 'search'} size={16} color={t.textSecondary} />
           </PressableScale>
         </View>
@@ -490,7 +514,8 @@ function IncRow({ label, value, options, onPick }: { label: string; value: numbe
 
 const styles = StyleSheet.create({
   toggleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  themeBtn: { flex: 1, height: 76, borderRadius: Radius.lg, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  fontBtn: { minHeight: 48, borderRadius: Radius.md, borderWidth: 1, paddingHorizontal: Spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  themeBtn: { flex: 1, minHeight: 76, borderRadius: Radius.lg, borderWidth: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
   input: { height: 48, borderRadius: Radius.md, paddingHorizontal: Spacing.lg, fontSize: 16, fontFamily: Font.bold },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   aiDot: { width: 10, height: 10, borderRadius: 5 },

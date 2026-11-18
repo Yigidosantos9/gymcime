@@ -14,7 +14,7 @@ import { PressableScale, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { applyWorkoutToRoutine, cardioPrDetails, createRoutineFromWorkout, getRoutineDiff, getWorkoutSummary } from '@/db/queries';
 import { useDbQuery } from '@/hooks/use-db-query';
-import { useTheme } from '@/hooks/use-theme';
+import { useScale, useTheme } from '@/hooks/use-theme';
 import { formatDuration, formatMinutes, formatWeight } from '@/lib/format';
 import { haptic } from '@/lib/haptics';
 import { formatKm, formatMin } from '@/lib/cardio';
@@ -24,6 +24,7 @@ import { useT } from '@/components/language-provider';
 import { routineLabel } from '@/i18n/labels';
 
 export default function Summary() {
+  const { f } = useScale();
   const _ = useT();
   const t = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -92,7 +93,7 @@ export default function Summary() {
       <LinearGradient colors={[t.primarySoft, 'transparent']} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={{ padding: Spacing.xl, gap: Spacing.lg }}>
-          <Animated.View entering={ZoomIn.springify().damping(12)} style={[styles.badge, { backgroundColor: t.goldSoft, borderColor: t.gold }]}>
+          <Animated.View entering={ZoomIn.springify().damping(12)} style={[styles.badge, { backgroundColor: t.goldSoft, borderColor: t.gold, width: f(92), height: f(92), borderRadius: f(46) }]}>
             <Icon name="trophy" size={40} color={t.gold} />
           </Animated.View>
           <Animated.View entering={FadeInDown.delay(120)}>
@@ -160,7 +161,7 @@ export default function Summary() {
         </ScrollView>
 
         <View style={{ padding: Spacing.xl, paddingTop: 0 }}>
-          <PressableScale onPress={goHome} style={[styles.cta, { backgroundColor: t.primary }]}>
+          <PressableScale onPress={goHome} style={[styles.cta, { backgroundColor: t.primary, height: f(56), borderRadius: f(28) }]}>
             <T variant="heading" color={t.onPrimary}>{_('summary.great_keep_going')}</T>
           </PressableScale>
           {diff && !updatedRoutine && (

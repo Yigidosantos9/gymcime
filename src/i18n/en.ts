@@ -940,5 +940,10 @@ export const en: Record<MsgKey, Msg> = {
   'prog.bwNote': '{eff} → next set {reps} reps',
   'start.activeTitle': 'A workout is in progress',
   'start.continue': 'Continue it',
+  'settings.font_size': 'Text size',
+  'settings.font_normal': 'Normal (100%)',
+  'settings.font_large': 'Large (115%)',
+  'settings.font_xlarge': 'Extra large (130%)',
+  'settings.font_hint': 'Text, icons and buttons grow together; the iOS system text size setting is also respected (up to a sensible limit).',
   // @@ADD
 };

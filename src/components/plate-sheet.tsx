@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { StyleSheet, TextInput, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { Icon } from '@/components/icon';
 import { useKeyboardSpace } from '@/components/routine-name-sheet';
 import type { useSheet } from '@/components/sheet';
-import { Chip, PressableScale, T } from '@/components/ui';
+import { Chip, Input, PressableScale, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatWeight, parseNumber } from '@/lib/format';
@@ -32,7 +32,7 @@ function PlateForm({ initial, bar: bar0, plates, step }: { initial: number; bar:
         <PressableScale onPress={() => bump(-step)} accessibilityRole="button" accessibilityLabel={_('plateSheet.decrease_weight')} style={[styles.step, { backgroundColor: t.surfacePressed }]}>
           <Icon name="minus" size={16} color={t.text} />
         </PressableScale>
-        <TextInput
+        <Input
           value={text}
           onChangeText={setText}
           keyboardType="decimal-pad"

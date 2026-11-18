@@ -2,7 +2,7 @@ import { View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Rect } from 'react-native-svg';
 
 import { T } from '@/components/ui';
-import { useTheme } from '@/hooks/use-theme';
+import { useScale, useTheme } from '@/hooks/use-theme';
 import { useT } from '@/components/language-provider';
 
 /**
@@ -100,8 +100,10 @@ function Figure({
   );
 }
 
-export function BodyMap({ values, size = 220, labels = true }: { values: MuscleValues; size?: number; labels?: boolean }) {
+export function BodyMap({ values, size: sizeProp = 220, labels = true }: { values: MuscleValues; size?: number; labels?: boolean }) {
   const _ = useT();
+  const { f } = useScale();
+  const size = f(sizeProp);
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'center', gap: size * 0.08 }}>
       <View style={{ alignItems: 'center', gap: 4 }}>
@@ -134,8 +136,9 @@ const ZOOM: Record<string, string> = {
 };
 
 /** Tek bir kası vurgulayan küçük ikon (egzersiz listeleri için). */
-export function MuscleIcon({ muscle, size = 40 }: { muscle: string; size?: number }) {
+export function MuscleIcon({ muscle, size: sizeProp = 40 }: { muscle: string; size?: number }) {
   const t = useTheme();
+  const size = useScale().f(sizeProp);
   const side = BACK_MUSCLES.has(muscle) ? 'back' : 'front';
   const vb = ZOOM[muscle] ?? '0 0 120 240';
   const inner = size * 0.82;

@@ -1,9 +1,9 @@
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { useSheet } from '@/components/sheet';
-import { Badge, Button, Card, Chip, Divider, PressableScale, SectionHeader, T } from '@/components/ui';
+import { Badge, Button, Card, Chip, Divider, Input, PressableScale, SectionHeader, T } from '@/components/ui';
 import { Font, Radius, Spacing } from '@/constants/theme';
 import { getNutritionProfile, latestBodyWeight, saveNutritionProfile } from '@/db/nutrition-queries';
 import { addBodyWeight } from '@/db/queries';
@@ -293,7 +293,7 @@ function Field({ label, value, onChange, unit, decimal }: { label: string; value
         {label}
       </T>
       <View style={[styles.field, { backgroundColor: t.surfaceRaised }]}>
-        <TextInput
+        <Input
           value={value}
           onChangeText={onChange}
           keyboardType={decimal ? 'decimal-pad' : 'number-pad'}
